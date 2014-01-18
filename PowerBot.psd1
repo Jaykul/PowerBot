@@ -63,11 +63,12 @@ PrivateData = @{
    Port = 8001
    Channels = @('#PowerBot')
    Owner = "Jaykul!~Jaykul@geoshell/dev/Jaykul"
-   CommandModules = @{Name="Bing"}, 
+   CommandModules = @(
+      @{Name="Bing"}, 
       @{Name="FAQ"}, 
-      @{Name="PoshCode\Scripts"; Function = "Search-PoshCode"},
       @{Name="PowerBot\BotCommands"}, 
       @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "New-Alias", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
+   )
    
    #  ProxyServer = "www.mc.xerox.com"
    #  ProxyPort = "8000"

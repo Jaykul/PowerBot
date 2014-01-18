@@ -14,6 +14,10 @@ $Script:PowerBotCtcpData = @{}
 $PSDefaultParameterValues."Out-String:Stream" = $true
 $PSDefaultParameterValues."Format-Table:Auto" = $true
 
+$PowerBotScriptRoot = Get-Variable PSScriptRoot -ErrorAction SilentlyContinue | ForEach-Object { $_.Value }
+if(!$PowerBotScriptRoot) {
+  $PowerBotScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
+}
 function Get-PowerBotIrcClient { $script:irc }
 
 function Send-Message {
@@ -199,7 +203,7 @@ function Resume-PowerBot {
       throw "You must call Start-PowerBot before you call Resume-Powerbot"
    }
 
-   Update-CommandModule $irc.CommandModules $irc.AdminModules $irc.OwnerModules
+   Update-CommandModule
 
    # Initialize the command array (only commands in this list will be heeded)
    while($Host.UI.RawUI.ReadKey().Character -ne "Q") {
@@ -208,6 +212,15 @@ function Resume-PowerBot {
       }
       Write-Host "PowerBot is running, press Q to quit"
    }
+}
+
+function Update-CommandModule {
+   param(
+      [Hashtable[]]$CommandModules = $ExecutionContext.SessionState.Module.PrivateData.CommandModules,
+      [Hashtable[]]$AdminModules = $ExecutionContext.SessionState.Module.PrivateData.AdminModules,
+      [Hashtable[]]$OwnerModules = $ExecutionContext.SessionState.Module.PrivateData.OwnerModules
+   )   
+   . $PowerBotScriptRoot\UpdateCommands.ps1 $CommandModules $AdminModules $OwnerModules
 }
 
 function Stop-PowerBot {
@@ -224,122 +237,6 @@ function Stop-PowerBot {
    for($i=0;$i -lt 30;$i++) { $irc.Listen($false) }
    $irc.Disconnect()
 }
-
-
-function Update-CommandModule {
-   [CmdletBinding()]param(
-      [Hashtable[]]$CommandModules = $ExecutionContext.SessionState.Module.PrivateData.CommandModules,
-      [Hashtable[]]$AdminModules = $ExecutionContext.SessionState.Module.PrivateData.AdminModules,
-      [Hashtable[]]$OwnerModules = $ExecutionContext.SessionState.Module.PrivateData.OwnerModules
-   )
-
-   Remove-Module PowerBotCommands, PowerBotOwnerCommands, PowerBotAdminCommands -ErrorAction SilentlyContinue
-
-   New-Module PowerBotOwnerCommands {
-      param($OwnerModules)
-      foreach($module in $OwnerModules) {
-         Import-Module @module -Force -Passthru
-      }
-
-      $script:irc = PowerBot\Get-PowerBotIrcClient
-
-      function Say {
-         #.Synopsis
-         #  Sends a message to the IRC server
-         [CmdletBinding()]
-         param(
-            # Who to send the message to (a channel or nickname)
-            [Parameter()]
-            [String]$To = $(if($Channel){$Channel}else{$From}),
-
-            # The message to send
-            [Parameter(Position=1, ValueFromPipeline=$true)]
-            [String]$Message,
-
-            # How to send the message (as a Message or a Notice)
-            [ValidateSet("Message","Notice")]
-            [String]$Type = "Message"
-         )
-         foreach($M in $Message.Trim().Split("`n")) {
-            $irc.SendMessage($Type, $To, $M.Trim())
-         }
-      }
-
-      function Get-OwnerCommand {
-         #.SYNOPSIS
-         #  Lists the commands available via the bot
-         param(
-            # A filter for the command name (allows wildcards)
-            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-            [String[]]$Name = "*"
-         )
-         process {
-            $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -like $Name -join ", "
-         }
-      }
-      Export-ModuleMember -Function * -Cmdlet * -Alias *
-   } -Args (,$OwnerModules) | Import-Module -Global
-
-   New-Module PowerBotAdminCommands {
-      param($AdminModules)
-      foreach($module in $AdminModules) {
-         Import-Module @module -Force -Passthru
-      }
-
-      function Update-Command {
-        [CmdletBinding()]param()
-        &(Get-Module PowerBot) { Update-CommandModule }
-      }
-
-      function Get-AdminCommand {
-         #.SYNOPSIS
-         #  Lists the commands available via the bot
-         param(
-            # A filter for the command name (allows wildcards)
-            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-            [String[]]$Name = "*"
-         )
-         process {
-            $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -like $Name -join ", "
-         }
-      }
-      Export-ModuleMember -Function * -Cmdlet * -Alias *
-   } -Args (,$AdminModules) | Import-Module -Global
-
-   New-Module PowerBotCommands {
-      param($CommandModules)
-      foreach($module in $CommandModules) {
-         Import-Module @module -Force -Passthru
-      }
-      function Get-Alias {
-         #.SYNOPSIS
-         #  Lists the commands available via the bot
-         param(
-            # A filter for the command name (allows wildcards)
-            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-            [String[]]$Name = "*"
-         )
-         process {
-            @($ExecutionContext.SessionState.Module.ExportedAliases.Values | Where Name -like $Name | Select -Expand DisplayName)-join ", "
-         }
-      }
-      function Get-Command {
-         #.SYNOPSIS
-         #  Lists the commands available via the bot
-         param(
-            # A filter for the command name (allows wildcards)
-            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-            [String[]]$Name = "*"
-         )
-         process {
-            $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -like $Name -join ", "
-         }
-      }
-      Export-ModuleMember -Function * -Cmdlet * -Alias *
-   } -Args (,$CommandModules) | Import-Module -Global
-
-}
-
 
 
 ####################################################################################################
@@ -377,8 +274,8 @@ function Process-Command {
    }
    
    
-   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedCommand 'PowerBot\Get-Command','PowerBot\Update-CommandModule' -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
-   $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedCommand "PowerBot\Get-Command", "PowerBot\Update-CommandModule" -AllowedVariable $InternalVariables -WarningVariable warnings
+   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
+   $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
    if(!$Script) {
       Send-Message -Type Notice -To $Data.Nick -Message "I think you're trying to trick me into doing something I don't want to do. Please stop, or I'll scream. $($warnings -join ' | ')"
       return

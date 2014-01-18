@@ -213,28 +213,31 @@ function Get-Help() {
    #>
 }
 
-function Search-PoshCode {
-   #.Synopsis
-   #  Search PoshCode.org for scripts
-   [CmdletBinding(DefaultParameterSetName="Single")]
-   PARAM(
-      # The search terms (words to search for)
-      [Parameter(Position=1, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
-      [Alias("SearchTerms","Terms")]
-      [string[]]${query},
 
-      # The number of search results to return (Defaults to 1, Max 5)
-      [Parameter(ParameterSetName="Multiple")]
-      [int]$count=3
-   )
+if(Import-Module "PoshCode\Scripts" -Function "Get-PoshCode" -Scope Local -EA 0 -Passthru) {
+   function Get-PoshCode {
+      #.Synopsis
+      #  Search PoshCode.org for scripts
+      [CmdletBinding(DefaultParameterSetName="Single")]
+      PARAM(
+         # The search terms (words to search for)
+         [Parameter(Position=1, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+         [Alias("SearchTerms","Terms")]
+         [string[]]${query},
 
-   if($count -gt 5) { 
-      Write-Output "$query results? More than three is kinda spammy, but that's ridiculous. Did you know you can use your browser to search PoshCode.org? Let me hook you up: http://PoshCode.org/?q=$(($query|%{$_.split(' ')}|%{[System.Web.HttpUtility]::UrlEncode($_)}) -join '+')" 
-      Write-Output "I'll guess I'll get you the first three anyway:"
-      $count = 3
+         # The number of search results to return (Defaults to 1, Max 5)
+         [Parameter(ParameterSetName="Multiple")]
+         [int]$count=3
+      )
+
+      if($count -gt 5) { 
+         Write-Output "$query results? More than three is kinda spammy, but that's ridiculous. Did you know you can use your browser to search PoshCode.org? Let me hook you up: http://PoshCode.org/?q=$(($query|%{$_.split(' ')}|%{[System.Web.HttpUtility]::UrlEncode($_)}) -join '+')" 
+         Write-Output "I'll guess I'll get you the first three anyway:"
+         $count = 3
+      }
+         
+      Scripts\Get-PoshCode -Query "$query" | select -first $count | ft id, Title, Web, Description -auto -HideTableHeaders
    }
-      
-   Scripts\Get-PoshCode -Query "$query" | select -first $count | ft id, Title, Web, Description -auto -HideTableHeaders
 }
 
 function Get-Weather {
