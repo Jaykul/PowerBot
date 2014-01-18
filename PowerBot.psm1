@@ -273,19 +273,22 @@ function Process-Command {
       $AllowedModule += "OwnerCommands", "PowerBotAdminCommands"
    }
    
-   
-   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
-   $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
-   if(!$Script) {
-      Send-Message -Type Notice -To $Data.Nick -Message "I think you're trying to trick me into doing something I don't want to do. Please stop, or I'll scream. $($warnings -join ' | ')"
-      return
-   }
-   
    $Channel  = $Data.Channel
    $Hostname = $Data.Host
    $Ident    = $Data.Ident
    $Message  = $Data.Message
    $Nick     = $Data.Nick
+   
+   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
+   $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
+   if(!$Script) {
+      if($Warnings) {
+         Send-Message -Type Message -To "#PowerBot" -Message "WARNING [${Channel}:${Nick}]: $($warnings -join ' | ')"
+         # Send-Message -Type Notice -To $Data.Nick -Message "I think you're trying to trick me into doing something I don't want to do. Please stop, or I'll scream. $($warnings -join ' | ')"
+      }
+      return
+   }
+   
    
    #IRC max length is 512, minus the CR LF and other headers ... 
    # In practice, it looks like this:

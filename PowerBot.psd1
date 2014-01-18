@@ -66,7 +66,9 @@ PrivateData = @{
    CommandModules = @(
       @{Name="Bing"}, 
       @{Name="FAQ"}, 
+      @{Name="Math"}, 
       @{Name="PowerBot\BotCommands"}, 
+      @{Name="PowerBot\WebQueries"}, 
       @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "New-Alias", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
    )
    
