@@ -78,9 +78,6 @@ function Start-PowerBot {
       # The "real name" to be returned to queries from the IRC server
       [string]$realname      = $ExecutionContext.SessionState.Module.PrivateData.RealName,
    
-      # A hostmask for the owner (supports wildcards), like: "Jaykul!~Jaykul@geoshell/dev/Jaykul"
-      [string]$owner         = $ExecutionContext.SessionState.Module.PrivateData.Owner,
-
       # The proxy server
       [string]$ProxyServer   = $ExecutionContext.SessionState.Module.PrivateData.ProxyServer,
    
@@ -94,7 +91,16 @@ function Start-PowerBot {
       [string]$ProxyPassword = $ExecutionContext.SessionState.Module.PrivateData.ProxyPassword,
 
       # Recreate the IRC client even if it already exists
-      [switch]$Force
+      [switch]$Force,
+
+      # The bot owner(s) have access to all commands
+      [String[]]$Owner = $ExecutionContext.SessionState.Module.PrivateData.Owner,
+      # The bot admin(s) have access to admin and regular commands
+      [String[]]$Admin = $ExecutionContext.SessionState.Module.PrivateData.Admin,
+
+      [Hashtable[]]$CommandModules = $ExecutionContext.SessionState.Module.PrivateData.CommandModules,
+      [Hashtable[]]$AdminModules = $ExecutionContext.SessionState.Module.PrivateData.AdminModules,
+      [Hashtable[]]$OwnerModules = $ExecutionContext.SessionState.Module.PrivateData.OwnerModules
    )
 
    Write-Verbose "PrivateData Defaults:`n`n$( $ExecutionContext.SessionState.Module.PrivateData | Out-String )"
@@ -119,6 +125,12 @@ function Start-PowerBot {
          $script:irc.ProxyUserName = $ProxyUserName
          $script:irc.ProxyPassword = $ProxyPassword
       }
+
+      Add-Member -Input $irc NoteProperty BotOwner $Owner
+      Add-Member -Input $irc NoteProperty BotAdmin $Admin
+      Add-Member -Input $irc NoteProperty CommandModules $CommandModules
+      Add-Member -Input $irc NoteProperty AdminModules $AdminModules
+      Add-Member -Input $irc NoteProperty OwnerModules $OwnerModules
 
       # This should show errors 
       $script:irc.Add_OnError( {Write-Error $_.ErrorMessage} )
@@ -183,7 +195,11 @@ function Resume-PowerBot {
    #  Reimport all command modules and restart the main listening loop
    [CmdletBinding()]param()
 
-   Update-CommandModule
+   if(!(Test-Path -Path Variable:Script:Irc)) {
+      throw "You must call Start-PowerBot before you call Resume-Powerbot"
+   }
+
+   Update-CommandModule $irc.CommandModules $irc.AdminModules $irc.OwnerModules
 
    # Initialize the command array (only commands in this list will be heeded)
    while($Host.UI.RawUI.ReadKey().Character -ne "Q") {
@@ -211,37 +227,120 @@ function Stop-PowerBot {
 
 
 function Update-CommandModule {
-   [CmdletBinding()]param()
+   [CmdletBinding()]param(
+      [Hashtable[]]$CommandModules = $ExecutionContext.SessionState.Module.PrivateData.CommandModules,
+      [Hashtable[]]$AdminModules = $ExecutionContext.SessionState.Module.PrivateData.AdminModules,
+      [Hashtable[]]$OwnerModules = $ExecutionContext.SessionState.Module.PrivateData.OwnerModules
+   )
 
-   Write-Host "Module: " $ExecutionContext.SessionState.Module
-   Remove-Module PowerBotCommands -ErrorAction SilentlyContinue
+   Remove-Module PowerBotCommands, PowerBotOwnerCommands, PowerBotAdminCommands -ErrorAction SilentlyContinue
+
+   New-Module PowerBotOwnerCommands {
+      param($OwnerModules)
+      foreach($module in $OwnerModules) {
+         Import-Module @module -Force -Passthru
+      }
+
+      $script:irc = PowerBot\Get-PowerBotIrcClient
+
+      function Say {
+         #.Synopsis
+         #  Sends a message to the IRC server
+         [CmdletBinding()]
+         param(
+            # Who to send the message to (a channel or nickname)
+            [Parameter()]
+            [String]$To = $(if($Channel){$Channel}else{$From}),
+
+            # The message to send
+            [Parameter(Position=1, ValueFromPipeline=$true)]
+            [String]$Message,
+
+            # How to send the message (as a Message or a Notice)
+            [ValidateSet("Message","Notice")]
+            [String]$Type = "Message"
+         )
+         foreach($M in $Message.Trim().Split("`n")) {
+            $irc.SendMessage($Type, $To, $M.Trim())
+         }
+      }
+
+      function Get-OwnerCommand {
+         #.SYNOPSIS
+         #  Lists the commands available via the bot
+         param(
+            # A filter for the command name (allows wildcards)
+            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+            [String[]]$Name = "*"
+         )
+         process {
+            $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -like $Name -join ", "
+         }
+      }
+      Export-ModuleMember -Function * -Cmdlet * -Alias *
+   } -Args (,$OwnerModules) | Import-Module -Global
+
+   New-Module PowerBotAdminCommands {
+      param($AdminModules)
+      foreach($module in $AdminModules) {
+         Import-Module @module -Force -Passthru
+      }
+
+      function Update-Command {
+        [CmdletBinding()]param()
+        &(Get-Module PowerBot) { Update-CommandModule }
+      }
+
+      function Get-AdminCommand {
+         #.SYNOPSIS
+         #  Lists the commands available via the bot
+         param(
+            # A filter for the command name (allows wildcards)
+            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+            [String[]]$Name = "*"
+         )
+         process {
+            $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -like $Name -join ", "
+         }
+      }
+      Export-ModuleMember -Function * -Cmdlet * -Alias *
+   } -Args (,$AdminModules) | Import-Module -Global
+
    New-Module PowerBotCommands {
       param($CommandModules)
       foreach($module in $CommandModules) {
-         Write-Host "Importing " $Module.Name
          Import-Module @module -Force -Passthru
       }
-   } -Args (,$ExecutionContext.SessionState.Module.PrivateData.CommandModules) | Import-Module -Global
-}
-
-function Get-Command {
-   #.SYNOPSIS
-   #  Lists the commands available via the bot
-   param(
-      # A filter for the command name (allows wildcards)
-      [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-      [String[]]$Name = "*",
-
-      [ValidateSet("Alias","All","Application","Cmdlet","ExternalScript","Filter","Function","Script","Workflow")]
-      [String[]]$CommandType = @("Function", "Cmdlet", "Alias")
-   )
-   process {
-      Microsoft.PowerShell.Core\Get-Command @PSBoundParameters -Module PowerBotCommands
-      if("Get-Command" -like $Name) {
-         Microsoft.PowerShell.Core\Get-Command "Get-Command" -Module PowerBot -Type Function, Cmdlet, Alias
+      function Get-Alias {
+         #.SYNOPSIS
+         #  Lists the commands available via the bot
+         param(
+            # A filter for the command name (allows wildcards)
+            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+            [String[]]$Name = "*"
+         )
+         process {
+            @($ExecutionContext.SessionState.Module.ExportedAliases.Values | Where Name -like $Name | Select -Expand DisplayName)-join ", "
+         }
       }
-   }
+      function Get-Command {
+         #.SYNOPSIS
+         #  Lists the commands available via the bot
+         param(
+            # A filter for the command name (allows wildcards)
+            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+            [String[]]$Name = "*"
+         )
+         process {
+            $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -like $Name -join ", "
+         }
+      }
+      Export-ModuleMember -Function * -Cmdlet * -Alias *
+   } -Args (,$CommandModules) | Import-Module -Global
+
 }
+
+
 
 ####################################################################################################
 ## Event Handlers
@@ -254,80 +353,96 @@ function Get-Command {
 
 $InternalVariables = "Channel", "From", "Hostname", "Ident", "Message", "Nick"
 
+function Test-Command {
+   [CmdletBinding()]param([Parameter(ValueFromRemainingArguments)][String]$ScriptString)
+
+   Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedVariable $InternalVariables -WarningVariable warnings
+
+}
+
 function Process-Command {
-  param($Data, $Sender)
-  Write-Verbose ("Message: " + $Data.Message)
-  if($Data.Message[0] -ne "!" -or $Data.Message.Length -eq 1) { return }
-
-  $ScriptString = $Data.Message.SubString(1)
-
-  Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedCommand 'PowerBot\Get-Command','PowerBot\Update-CommandModule' -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
-  $Script = Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedCommand "PowerBot\Get-Command", "PowerBot\Update-CommandModule" -AllowedVariable $InternalVariables -WarningVariable warnings
-  if(!$Script) {
-    Send-Message -Type Notice -To $Data.Nick -Message "I think you're trying to trick me into doing something I don't want to do. Please stop, or I'll scream. $($warnings -join ' | ')"
-    return
-  }
-
-  $Channel  = $Data.Channel
-  $From     = $Data.From
-  $Hostname = $Data.Host
-  $Ident    = $Data.Ident
-  $Message  = $Data.Message
-  $Nick     = $Data.Nick
-
-  #IRC max length is 512, minus the CR LF and other headers ... 
-  # In practice, it looks like this:
-  # :Nick!Ident@Host PRIVMSG #Powershell :Your Message Here
-  ###### The part that never changes is the 512-2 (for the \r\n) 
-  ###### And the "PRIVMSG" and extra spaces and colons
-  # So that inflexible part of the header is:
-  #     1 = ":".Length
-  #     9 = " PRIVMSG ".Length 
-  #     2 = " :".Length
-  # So therefore our hard-coded magic number is:
-  #     498 = 510 - 12
-  # (I take an extra one off for good luck: 510 - 13)
-
-  # In a real world example with my host and "Shelly" as the nick:
-    # Host     : geoshell/dev/Jaykul
-    # Ident    : ~Shelly
-    # Nick     : Shelly
-  # We calculate the mask in our OnWho:
-    # Mask     : Shelly!~Shelly@geoshell/dev/Jaykul
-
-  # So if the "$Sender" is "#PowerShell" our header is:
-  #     57 = ":Shelly!~Shelly@geoshell/dev/Jaykul PRIVMSG #Powershell :".Length
-    # As we said before/, 12 is constant
-    #     12 = ":" + " PRIVMSG " + " :"
-    # And our Who.Mask ends up as:
-    #     34 = "Shelly!~Shelly@geoshell/dev/Jaykul".Length 
-    # And our Sender.Length is:
-    #     11 = "#Powershell".Length
-    # The resulting MaxLength would be 
-    #    452 = 497 - 11 - 34
-    # Which is one less than the real MaxLength:
-    #    453 = 512 - 2 - 57 
-
-  $global:MaxLength = 497 - $Sender.Length - $irc.Who.Mask.Length 
-  if($Script) {
-    Write-Verbose "SCRIPT: $Script"
-    Invoke-Expression $Script | 
-        Format-Table -Auto |
-        Out-String -width $MaxLength -Stream | 
-        Select-Object -First 8 | # Hard limit to number of messages no matter what.
-        Send-Message -To $Sender
-  }
+   param($Data, $Sender)
+   Write-Verbose ("Message: " + $Data.Message)
+   if($Data.Message[0] -ne "!" -or $Data.Message.Length -eq 1) { return }
+   
+   $ScriptString = $Data.Message.SubString(1)
+   $From     = $Data.From
+   
+   $AllowedModule = @("PowerBotCommands")
+   if(($irc.BotOwner | %{ $From -like $_ }) -Contains $True) {
+      $AllowedModule += "OwnerCommands", "PowerBotOwnerCommands", "PowerBotAdminCommands"
+   } 
+   elseif(($irc.BotAdmin | %{ $From -like $_ }) -Contains $True) {
+      $AllowedModule += "OwnerCommands", "PowerBotAdminCommands"
+   }
+   
+   
+   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedCommand 'PowerBot\Get-Command','PowerBot\Update-CommandModule' -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
+   $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedCommand "PowerBot\Get-Command", "PowerBot\Update-CommandModule" -AllowedVariable $InternalVariables -WarningVariable warnings
+   if(!$Script) {
+      Send-Message -Type Notice -To $Data.Nick -Message "I think you're trying to trick me into doing something I don't want to do. Please stop, or I'll scream. $($warnings -join ' | ')"
+      return
+   }
+   
+   $Channel  = $Data.Channel
+   $Hostname = $Data.Host
+   $Ident    = $Data.Ident
+   $Message  = $Data.Message
+   $Nick     = $Data.Nick
+   
+   #IRC max length is 512, minus the CR LF and other headers ... 
+   # In practice, it looks like this:
+   # :Nick!Ident@Host PRIVMSG #Powershell :Your Message Here
+   ###### The part that never changes is the 512-2 (for the \r\n) 
+   ###### And the "PRIVMSG" and extra spaces and colons
+   # So that inflexible part of the header is:
+   #     1 = ":".Length
+   #     9 = " PRIVMSG ".Length 
+   #     2 = " :".Length
+   # So therefore our hard-coded magic number is:
+   #     498 = 510 - 12
+   # (I take an extra one off for good luck: 510 - 13)
+   
+   # In a real world example with my host and "Shelly" as the nick:
+     # Host     : geoshell/dev/Jaykul
+     # Ident    : ~Shelly
+     # Nick     : Shelly
+   # We calculate the mask in our OnWho:
+     # Mask     : Shelly!~Shelly@geoshell/dev/Jaykul
+   
+   # So if the "$Sender" is "#PowerShell" our header is:
+   #     57 = ":Shelly!~Shelly@geoshell/dev/Jaykul PRIVMSG #Powershell :".Length
+     # As we said before/, 12 is constant
+     #     12 = ":" + " PRIVMSG " + " :"
+     # And our Who.Mask ends up as:
+     #     34 = "Shelly!~Shelly@geoshell/dev/Jaykul".Length 
+     # And our Sender.Length is:
+     #     11 = "#Powershell".Length
+     # The resulting MaxLength would be 
+     #    452 = 497 - 11 - 34
+     # Which is one less than the real MaxLength:
+     #    453 = 512 - 2 - 57 
+   
+   $global:MaxLength = 497 - $Sender.Length - $irc.Who.Mask.Length 
+   if($Script) {
+      Write-Verbose "SCRIPT: $Script"
+      Invoke-Expression $Script | 
+         Format-Table -Auto |
+         Out-String -width $MaxLength -Stream | 
+         Select-Object -First 8 | # Hard limit to number of messages no matter what.
+         Send-Message -To $Sender
+   }
 }
 
 
 function OnQueryMessage_ProcessCommands { 
-  Process-Command -Data $_.Data -Sender $_.Data.Nick
+   Process-Command -Data $_.Data -Sender $_.Data.Nick
 }
 
 
 
 function OnChannelMessage_ProcessCommands {
-  Process-Command -Data $_.Data -Sender $_.Data.Channel
+   Process-Command -Data $_.Data -Sender $_.Data.Channel
 }
 
 function OnChannelMessage_ResolveUrls {

@@ -40,7 +40,7 @@ FunctionsToExport = 'Start-PowerBot', 'Resume-PowerBot', 'Stop-PowerBot', 'Get-P
 #CmdletsToExport = ''
 
 # This is a list of other modules that must be loaded before this module.
-RequiredModules = @('ResolveAlias')
+RequiredModules = @('HttpRest', 'ResolveAlias')
 
 # The script files (.ps1) that are loaded before this module.
 ScriptsToProcess = @()
@@ -76,4 +76,3 @@ PrivateData = @{
 }
 
 }
-
