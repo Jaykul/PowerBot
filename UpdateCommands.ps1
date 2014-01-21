@@ -113,7 +113,7 @@ New-Module PowerBotCommands {
          [String[]]$Name = "*"
       )
       process {
-         @($ExecutionContext.SessionState.Module.ExportedAliases.Values | Where Name -like $Name | Select -Expand DisplayName)-join ", "
+         @(Microsoft.PowerShell.Utility\Get-Alias -Definition $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -ErrorAction SilentlyContinue | Select -Expand DisplayName) -join ", "
       }
    }
    function Get-Command {
