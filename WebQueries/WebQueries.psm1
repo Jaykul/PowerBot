@@ -220,6 +220,54 @@ function Get-Acronym {
    }
 }
 
+Set-Alias duck Invoke-DuckDuckGo
+function Invoke-DuckDuckGo {
+   #.Synopsis
+   #  Call DuckDuckGo API
+   param(
+      # Query to pass on to DuckDuckGo
+      [Parameter(Position=0, ValueFromRemainingArguments=$true )]
+      $Query = "Windows PowerShell"
+   )
+
+   $UrlQuery = [System.Net.WebUtility]::UrlEncode($Query)
+
+   $response = invoke-restmethod "http://api.duckduckgo.com/?format=json&skip_disambig=1&no_redirect=1&no_html=1&t=PowerBot&q=${UrlQuery}"
+   if($response.Answer) {
+      $response.Answer
+   } elseif($response.DefinitionSource) {
+      "{0} - {1} - {2}" -f ($response.Definition -replace "</?(:?pre|code)>"), $response.DefinitionSource, $response.DefinitionUrl
+   } elseif($response.AbstractText) {
+      "{0} - {1} - {2}" -f ($response.AbstractText -replace "</?(:?pre|code)>"), $response.AbstractSource, $response.AbstractUrl
+   } elseif($response.Definition) {
+      $response.Definition
+   }elseif($response.Type -eq "D") {
+      $related = $response | % RelatedTopics | % Text
+      if($related) {
+         return "Too ambiguous: " + ($related -Join " -or- ")
+      } else {
+         return "Sorry, the response is too ambiguous"
+      }
+   } else {
+      "I don't know anything about ${Query}"
+   }
+   # A (article), D (disambiguation), C (category), N (name), E (exclusive)
+}
+
+Set-Alias chuck Invoke-ChuckNorris
+function Invoke-ChuckNorris {
+   #.Synopsis
+   #  Random Chuck Norris awesomeness
+   param( [Parameter(Position=0)]$User )
+
+   if($User -eq "me") { $User = $Nick }
+   if($User) {
+      (irm "http://api.icndb.com/jokes/random?exclude=[explicit]&firstName=${User}&lastName=").value.joke -replace "  "," "
+   } else {
+      (irm "http://api.icndb.com/jokes/random?exclude=[explicit]").value.joke
+   }
+}
+
 function ConvertTo-ShortUrl {
    #.SYNOPSIS
    #  Gets a short url from is.gd for a long URL.
@@ -334,3 +382,5 @@ function Test_ResolveUrl {
 #      Invoke-Http POST http://wordsmith.org/anagram/anagram.cgi @{anagram=$anagram; t=1 } | 
 #        Receive-Http TEXT "//p[3]/text()"
 # }
+
+Export-ModuleMember -Function *-* -Cmdlet * -Alias *
