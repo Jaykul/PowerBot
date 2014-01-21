@@ -22,6 +22,22 @@ New-Module PowerBotOwnerCommands {
 
    $script:irc = PowerBot\Get-PowerBotIrcClient
 
+   function Join {
+      #.Synopsis
+      #  Joins a channel on the server
+      [CmdletBinding()]
+      param(
+         # The channel to join
+         $channel
+      )
+      
+      if($channel) {
+         $irc.RfcJoin( $channel )
+      } else {
+         "You have to specify a channel, duh!"
+      }
+   }
+
    function Say {
       #.Synopsis
       #  Sends a message to the IRC server

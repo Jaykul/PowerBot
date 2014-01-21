@@ -114,7 +114,7 @@ function Start-PowerBot {
       
       # TODO: Expose these options to the psd1
       $script:irc.AutoRejoin = $true
-      $script:irc.AutoRejoinOnKick = $true
+      $script:irc.AutoRejoinOnKick = $false
       $script:irc.AutoRelogin = $true
       $script:irc.AutoReconnect = $true
       $script:irc.AutoRetry = $true
