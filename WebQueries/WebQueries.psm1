@@ -313,9 +313,8 @@ function Resolve-URL {
    [regex]$snip   = "(?:https?://)?(?:snurl|snipr|snipurl)\.com/([^?/ ]*)\b"
    [regex]$twurl  = "(?:https?://)?twurl.nl/([^?/ ]*)\b"
    [regex]$tiny   = "(?:https?://)?tinyurl.com/([^?/ ]*)\b"
-   # These two require an API key (get your own)
-   [regex]$bitly  = "(?:https?://)?bit.ly/([^?/ ]*)\b"
-   [regex]$jmp    = "(?:https?://)?j.mp/([^?/ ]*)\b"
+   # Bitly supports a lot of custom 3rd party domains
+   [regex]$bitly  = "(?:https?://)?(?:bit.ly|j.mp|amzn.to)/([^?/ ]*)\b"
    # Su.pr and Tr.im don't have working API right now: 1/17/2014
    [regex]$trim   = "(?:https?://)?tr.im/([^?/ ]*)\b"
    [regex]$supr   = "(?:https?://)?su.pr/([^?/ ]*)\b"
@@ -336,12 +335,12 @@ function Resolve-URL {
       $url = Replace-Matches $url $xrl.Matches($url)    {Invoke-Http GET "http`://metamark.net/api/rest/simple"       @{short_url=$_} | Receive-Http TEXT }
       $url = Replace-Matches $url $snip.Matches($url)   {Invoke-Http GET "http`://snipurl.com/resolveurl"             @{id=$_}        | Receive-Http TEXT }
       $url = Replace-Matches $url $tiny.Matches($url)   {Invoke-Http GET "http`://tinyurl.com/preview.php"            @{num=$_}       | Receive-Http TEXT "//a[@id='redirecturl']/@href" }
-      ## bitly's is frustrating, because it not only requires an apiKey, it returns invalid xml
-      #$url = Replace-Matches $url $bitly.Matches($url)  {Invoke-Http GET "http`://api.bit.ly/expand" @{version = "2.0.1"; login=""; apiKey=""; format="xml"; shortUrl="http://bit.ly/$_" } | Receive-Http Text |% { $_ -replace ".*longUrl\>(.*)\</longUrl.*",'$1' }}
-      #$url = Replace-Matches $url $jmp.Matches($url)    {Invoke-Http GET "http`://api.bit.ly/expand" @{version = "2.0.1"; login=""; apiKey=""; format="xml"; shortUrl="http://bit.ly/$_" } | Receive-Http Text |% { $_ -replace ".*longUrl\>(.*)\</longUrl.*",'$1' }}
-      
-      # $url = Replace-Matches $url $supr.Matches($url)   {Invoke-Http GET "http`://su.pr/api/expand"           @{format="xml";hash=$_} | Receive-Http TEXT "//*[@name='longUrl']/@value" }
-      # $url = Replace-Matches $url $trim.Matches($url)   {Invoke-Http GET "http`://api.tr.im/v1/trim_destination.xml" @{trimpath=$_}   | Receive-Http Text "//trim/destination" }
+      ## Bitly requires OAuth (or an APIKey, although that's deprecated)
+      $url = Replace-Matches $url $bitly.Matches($url)  {Invoke-Http GET "http`://api.bit.ly/v3/expand"               @{format="xml"; hash=$_; login=""; apiKey=""; } | Receive-Http TEXT "//long_url" }
+
+      ## These two are AWOL and their APIs don't work (even though their links still do)
+      # $url = Replace-Matches $url $supr.Matches($url)   {Invoke-Http GET "http`://su.pr/api/expand"                   @{format="xml"; hash=$_} | Receive-Http TEXT "//*[@name='longUrl']/@value" }
+      # $url = Replace-Matches $url $trim.Matches($url)   {Invoke-Http GET "http`://api.tr.im/v1/trim_destination.xml"  @{trimpath=$_}   | Receive-Http Text "//trim/destination" }
       
       if( $url -ne $old ) {
          Write-Output $url
@@ -358,9 +357,10 @@ function Test_ResolveUrl {
    Write-Host "http`://tinyurl.com/4xuwlh"  ($result = Resolve-URL "http`://tinyurl.com/4xuwlh") ($result -eq "http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" )
    Write-Host "http`://j.mp/3lqjMf"         ($result = Resolve-URL "http`://j.mp/3lqjMf") ($result -eq "http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" )
    Write-Host "http`://bit.ly/3lqjMf"       ($result = Resolve-URL "http`://bit.ly/3lqjMf") ($result -eq "http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" )
+   Write-Host "http`://amzn.to/1moRjaK"     ($result = Resolve-URL "http`://amzn.to/1moRjaK") ($result -eq "http`://www.amazon.com/gp/product/B005CSOE1G/ref=as_li_ss_tl?ie=UTF8&camp=1789&creative=390957&creativeASIN=B005CSOE1G&linkCode=as2&tag=huddledmasses-20" )
 
-   Write-Host "http`://tr.im/wsxg"          ($result = Resolve-URL "http`://tr.im/wsxg") ($result -eq "http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" )
-   Write-Host "http`://su.pr/2Tqyub"        ($result = Resolve-URL "http`://su.pr/2Tqyub") ($result -eq "http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" )
+   # Write-Host "http`://tr.im/wsxg"          ($result = Resolve-URL "http`://tr.im/wsxg") ($result -eq "http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" )
+   # Write-Host "http`://su.pr/2Tqyub"        ($result = Resolve-URL "http`://su.pr/2Tqyub") ($result -eq "http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" )
 
    Write-Host "Multiple Url Torture" ("http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/ -- This is a simple test of the Resolve-Url cmdlet http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/ to see if it can resolve http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/ multiple urls http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/ and such. http`://huddledmasses.org/get-web-another-round-of-wget-for-powershell/" -eq `
    (Resolve-URL "http`://xrl.us/bkhfy -- This is a simple test of the Resolve-Url cmdlet http`://is.gd/fSf to see if it can resolve http`://xrl.us/bkhfy multiple urls http`://snurl.com/28o3w and such. http`://tinyurl.com/4xuwlh"))
