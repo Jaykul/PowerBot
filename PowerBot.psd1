@@ -69,7 +69,10 @@ PrivateData = @{
       @{Name="Math"}, 
       @{Name="PowerBot\BotCommands"}, 
       @{Name="PowerBot\WebQueries"}, 
-      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "New-Alias", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
+      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
+   )
+   AdminModules = @(
+      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "New-Alias"}
    )
    
    #  ProxyServer = "www.mc.xerox.com"
