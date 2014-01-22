@@ -258,11 +258,14 @@ Set-Alias chuck Invoke-ChuckNorris
 function Invoke-ChuckNorris {
    #.Synopsis
    #  Random Chuck Norris awesomeness
-   param( [Parameter(Position=0)]$User )
+   param(
+      [Parameter(Position=0)]$FirstName,
+      [Parameter(Position=1)]$LastName = ""
+   )
 
-   if($User -eq "me") { $User = $Nick }
-   if($User) {
-      (irm "http://api.icndb.com/jokes/random?exclude=[explicit]&firstName=${User}&lastName=").value.joke -replace "  "," "
+   if($FirstName -eq "me") { $FirstName = $Nick }
+   if($FirstName) {
+      (irm "http://api.icndb.com/jokes/random?exclude=[explicit]&firstName=${FirstName}&lastName=${LastName}").value.joke -replace "  "," "
    } else {
       (irm "http://api.icndb.com/jokes/random?exclude=[explicit]").value.joke
    }
@@ -336,7 +339,7 @@ function Resolve-URL {
       $url = Replace-Matches $url $snip.Matches($url)   {Invoke-Http GET "http`://snipurl.com/resolveurl"             @{id=$_}        | Receive-Http TEXT }
       $url = Replace-Matches $url $tiny.Matches($url)   {Invoke-Http GET "http`://tinyurl.com/preview.php"            @{num=$_}       | Receive-Http TEXT "//a[@id='redirecturl']/@href" }
       ## Bitly requires OAuth (or an APIKey, although that's deprecated)
-      $url = Replace-Matches $url $bitly.Matches($url)  {Invoke-Http GET "http`://api.bit.ly/v3/expand"               @{format="xml"; hash=$_; login=""; apiKey=""; } | Receive-Http TEXT "//long_url" }
+      $url = Replace-Matches $url $bitly.Matches($url)  {Invoke-Http GET "http`://api.bit.ly/v3/expand"               @{format="xml"; hash=$_; login="jaykul"; apiKey="R_05c31e25dd38fb6113044336ae23a441"; } | Receive-Http TEXT "//long_url" }
 
       ## These two are AWOL and their APIs don't work (even though their links still do)
       # $url = Replace-Matches $url $supr.Matches($url)   {Invoke-Http GET "http`://su.pr/api/expand"                   @{format="xml"; hash=$_} | Receive-Http TEXT "//*[@name='longUrl']/@value" }
