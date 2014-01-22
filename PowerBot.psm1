@@ -18,6 +18,11 @@ $PowerBotScriptRoot = Get-Variable PSScriptRoot -ErrorAction SilentlyContinue | 
 if(!$PowerBotScriptRoot) {
   $PowerBotScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
 }
+
+if(!(Test-Path ircdata:)) {
+   Mount-SQLite -Name ircdata -DataSource (Join-Path $PowerBotScriptRoot "botdata.sqlite")
+}
+
 function Get-PowerBotIrcClient { $script:irc }
 
 function Send-Message {
@@ -135,6 +140,7 @@ function Start-PowerBot {
       Add-Member -Input $irc NoteProperty CommandModules $CommandModules
       Add-Member -Input $irc NoteProperty AdminModules $AdminModules
       Add-Member -Input $irc NoteProperty OwnerModules $OwnerModules
+      Add-Member -Input $irc NoteProperty BotChannels $Channels
 
       # This should show errors 
       $script:irc.Add_OnError( {Write-Error $_.ErrorMessage} )
@@ -171,17 +177,7 @@ function Start-PowerBot {
       } )
 
       ## Who sends us the information about who we are, and gives us a chance to (re)join channels
-      $script:irc.Add_OnWho( {
-         # We only deal with this stuff the first time we see this message:
-         if(!$irc.Who) {
-            $_ | Add-Member NoteProperty Mask $($_.Nick +"!"+ $_.Ident +"@"+ $_.Host)
-            Add-Member -Input $irc NoteProperty Who (Select-Object Host, Ident, Nick, Realname, Mask -Input $_)
-
-            if(!$irc.JoinedChannels) {
-               foreach($chan in $channels) { $irc.RfcJoin( $chan ) }
-            }
-         }
-      } )
+      $script:irc.Add_OnWho({OnWho_UserData})
    }
    
    # Connect to the server
@@ -191,6 +187,16 @@ function Start-PowerBot {
    Resume-PowerBot # Shortcut so starting this thing up only takes one command
 }
 
+function OnWho_UserData {
+   # The first time we see this a WHO, it is about us, so...
+   if(!$irc.Who) {
+      Add-Member -Input $irc NoteProperty Who (Select-Object Host, Ident, Nick, Realname, @{n="Mask";e={$_.Nick +"!"+ $_.Ident +"@"+ $_.Host}} -Input $_)
+
+      if(!$irc.JoinedChannels) {
+         foreach($chan in $irc.BotChannels) { $irc.RfcJoin( $chan ) }
+      }
+   }
+} 
 ## Note that PowerBot stops listening if you press Q ...
 ## You have to run Resume-Powerbot to get him to listen again
 ## That's the safe way to reload all the PowerBot commands
@@ -334,12 +340,9 @@ function Process-Command {
    }
 }
 
-
 function OnQueryMessage_ProcessCommands { 
    Process-Command -Data $_.Data -Sender $_.Data.Nick
 }
-
-
 
 function OnChannelMessage_ProcessCommands {
    Process-Command -Data $_.Data -Sender $_.Data.Channel
