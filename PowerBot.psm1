@@ -216,8 +216,8 @@ function Resume-PowerBot {
       while(!$Host.UI.RawUI.KeyAvailable) { 
          $irc.ListenOnce() 
       }
-      Write-Host "PowerBot is running, press Q to quit"
    }
+   Stop-PowerBot
 }
 
 function Update-CommandModule {
@@ -332,11 +332,16 @@ function Process-Command {
    $global:MaxLength = 497 - $Sender.Length - $irc.Who.Mask.Length 
    if($Script) {
       Write-Verbose "SCRIPT: $Script"
-      Invoke-Expression $Script | 
-         Format-Table -Auto |
-         Out-String -width $MaxLength -Stream | 
-         Select-Object -First 8 | # Hard limit to number of messages no matter what.
-         Send-Message -To $Sender
+      try {
+         Invoke-Expression $Script | 
+            Format-Table -Auto |
+            Out-String -width $MaxLength -Stream | 
+            Select-Object -First 8 | # Hard limit to number of messages no matter what.
+            Send-Message -To $Sender
+      } catch {
+         Send-Message -To "#PowerBot" -Message "ERROR [${Channel}:${Nick}]: $_"
+         Write-Warning "EXCEPTION IN COMMAND ($Script): $_"
+      }
    }
 }
 
