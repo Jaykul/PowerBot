@@ -2,26 +2,30 @@ Set-Alias paste Get-Pastebin
 function Get-Pastebin {
    #.Synopsis
    #  Get the latest new posts from the channel paste bin
+   [CmdletBinding()]
    param(
       # The most recent paste that we know of
-      $script:lastlink
+      [int]$lastlink = $script:lastlink
    )
 
    $items = invoke-http get http://jaykul.com/feed | receive-http xml //item
 
-   if($lastlink) {
-      $new = ""
+   [int]$script:lastlink = Split-Path $items[0].link -Leaf
+
+   if($local:lastlink) {
+      Write-Verbose "Last Link: $lastlink"
+      $output = $false
       foreach($link in $items | select-object -first 5) {
-         if($link.link -eq $script:lastlink) {
-           if($new){ $script:lastlink = $new }
-           break
-         }
-         if(!$new){ $new = $link.link }
-      
-         "{0} just pasted {1} {2}" -f $link.creator, $link.title, $link.link
+         [int]$index = Split-Path $link.link -Leaf
+         if($local:lastlink -ge $index) { break }
+         "{0} just pasted {1} at {2} {3}" -f $link.creator, $link.title, ([datetime]::parse($link.pubDate).ToUniversalTime().ToString("dddd \a\t H:m:s \U\T\C")), $link.link
+         $output = $true
       }
+      if(!$output) {
+         "To share code, please use http://jaykul.com?new and then run !paste"
+      }
+
    } else {
-      $script:lastlink = $items[0].link
       "{0} pasted {1} on {2} {3}" -f $items[0].creator, $items[0].title, ([datetime]::parse($items[0].pubDate).ToUniversalTime().ToString("dddd \a\t H:m:s \U\T\C")), $items[0].link
    }
 }
@@ -40,16 +44,16 @@ if(Import-Module "PoshCode\Scripts" -Function "Get-PoshCode" -Scope Local -EA 0 
 
          # The number of search results to return (Defaults to 1, Max 5)
          [Parameter(ParameterSetName="Multiple")]
-         [int]$count=3
+         [int]$count=1
       )
 
       if($count -gt 5) { 
          Write-Output "$query results? More than three is kinda spammy, but that's ridiculous. Did you know you can use your browser to search PoshCode.org? Let me hook you up: http://PoshCode.org/?q=$(($query|%{$_.split(' ')}|%{[System.Web.HttpUtility]::UrlEncode($_)}) -join '+')" 
-         Write-Output "I'll guess I'll get you the first three anyway:"
-         $count = 3
+         Write-Output "I'll guess I'll get you the first one anyway:"
+         $count = 1
       }
          
-      Scripts\Get-PoshCode -Query "$query" | select -first $count | ft id, Title, Web, Description -auto -HideTableHeaders
+      Scripts\Get-PoshCode -Query "$query" -Count $count | ft id, Title, Web, Description -auto -HideTableHeaders
    }
 }
 
