@@ -19,9 +19,13 @@ if(!$PowerBotScriptRoot) {
   $PowerBotScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
 }
 
-if(!(Test-Path ircdata:)) {
-   Mount-SQLite -Name ircdata -DataSource (Join-Path $PowerBotScriptRoot "botdata.sqlite")
+if(!(Test-Path data:)) {
+   $BotDataFile = (Join-Path $PowerBotScriptRoot "botdata.sqlite")
+   Write-Host "Bot Data: $BotDataFile"
+   Mount-SQLite -Name data -DataSource $BotDataFile
 }
+
+$PSDefaultParameterValues
 
 function Get-PowerBotIrcClient { $script:irc }
 
@@ -214,7 +218,7 @@ function Resume-PowerBot {
    # Initialize the command array (only commands in this list will be heeded)
    while($Host.UI.RawUI.ReadKey().Character -ne "Q") {
       while(!$Host.UI.RawUI.KeyAvailable) { 
-         $irc.ListenOnce() 
+         $irc.ListenOnce($false) 
       }
    }
    Stop-PowerBot
@@ -279,11 +283,11 @@ function Process-Command {
       $AllowedModule += "OwnerCommands", "PowerBotAdminCommands"
    }
    
-   $Channel  = $Data.Channel
-   $Hostname = $Data.Host
-   $Ident    = $Data.Ident
-   $Message  = $Data.Message
-   $Nick     = $Data.Nick
+   $global:Channel  = $Data.Channel
+   $global:Hostname = $Data.Host
+   $global:Ident    = $Data.Ident
+   $global:Message  = $Data.Message
+   $global:Nick     = $Data.Nick
    
    Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
    $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
@@ -343,6 +347,7 @@ function Process-Command {
       }
    }
 }
+
 
 function OnQueryMessage_ProcessCommands { 
    Process-Command -Data $_.Data -Sender $_.Data.Nick

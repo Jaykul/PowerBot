@@ -22,6 +22,20 @@ New-Module PowerBotOwnerCommands {
 
    $script:irc = PowerBot\Get-PowerBotIrcClient
 
+   function Quit {
+      #.Synopsis
+      #  Joins a channel on the server
+      [CmdletBinding()]
+      param(
+         # The channel to join
+         $message = "As ordered"
+      )
+      
+      $irc.RfcQuit($Message)
+      for($i=0;$i -lt 30;$i++) { $irc.Listen($false) }
+      $irc.Disconnect()
+   }
+
    function Join {
       #.Synopsis
       #  Joins a channel on the server
