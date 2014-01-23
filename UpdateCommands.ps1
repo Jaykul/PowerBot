@@ -69,7 +69,7 @@ New-Module PowerBotOwnerCommands {
          [String[]]$Name = "*"
       )
       process {
-         @($ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Select -Expand Name | Sort) -join ", "
+         $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
       }
    }
    Export-ModuleMember -Function * -Cmdlet * -Alias *
@@ -104,7 +104,7 @@ New-Module PowerBotAdminCommands {
          [String[]]$Name = "*"
       )
       process {
-         @($ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Select -Expand Name | Sort) -join ", "
+         $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
       }
    }
    Export-ModuleMember -Function * -Cmdlet * -Alias *
@@ -129,7 +129,7 @@ New-Module PowerBotCommands {
          [String[]]$Name = "*"
       )
       process {
-         @(Microsoft.PowerShell.Utility\Get-Alias -Definition $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -ErrorAction SilentlyContinue | Select -Expand DisplayName) -join ", "
+         Microsoft.PowerShell.Utility\Get-Alias -Definition $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -ErrorAction SilentlyContinue
       }
    }
    function Get-Command {
@@ -141,7 +141,7 @@ New-Module PowerBotCommands {
          [String[]]$Name = "*"
       )
       process {
-         @($ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Select -Expand Name | Sort) -join ", "
+         $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
       }
    }
    Export-ModuleMember -Function * -Cmdlet * -Alias *

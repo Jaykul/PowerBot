@@ -334,8 +334,7 @@ function Process-Command {
       Write-Verbose "SCRIPT: $Script"
       try {
          Invoke-Expression $Script | 
-            Format-Table -Auto |
-            Out-String -width $MaxLength -Stream | 
+            Format-Csv -Width $MaxLength | 
             Select-Object -First 8 | # Hard limit to number of messages no matter what.
             Send-Message -To $Sender
       } catch {

@@ -40,7 +40,7 @@ FunctionsToExport = 'Start-PowerBot', 'Resume-PowerBot', 'Stop-PowerBot', 'Get-P
 #CmdletsToExport = ''
 
 # This is a list of other modules that must be loaded before this module.
-RequiredModules = @('HttpRest', 'ResolveAlias', 'SQLite')
+RequiredModules = @('HttpRest', 'ResolveAlias', 'SQLite', 'Strings')
 
 # The script files (.ps1) that are loaded before this module.
 ScriptsToProcess = @()
@@ -52,7 +52,7 @@ TypesToProcess = @()
 FormatsToProcess = @()
 
 # A list of assemblies that must be loaded before this module can work.
-RequiredAssemblies = 'bin\Meebey.SmartIrc4net.dll' # Meebey.SmartIrc4net, Version=0.4.5, Culture=neutral, PublicKeyToken=null
+RequiredAssemblies = '.\bin\Meebey.SmartIrc4net.dll' # Meebey.SmartIrc4net, Version=0.4.5, Culture=neutral, PublicKeyToken=null
 
 # Module specific private data can be passed via this member.
 PrivateData = @{
@@ -69,7 +69,8 @@ PrivateData = @{
       @{Name="Math"}, 
       @{Name="PowerBot\BotCommands"}, 
       @{Name="PowerBot\WebQueries"}, 
-      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
+      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"},
+      @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"}
    )
    AdminModules = @(
       @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "New-Alias"}
