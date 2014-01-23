@@ -77,7 +77,7 @@ function Get-Weather {
       }
 
       $f = @($channel.item.forecast)[0]
-      "Current Weather at {0}, {1} as of {2}: {3} {4} -- Today's Forecast: {5} {6}" -f $channel.location.city,
+      "Current Weather at {0}, {1} as of {2}: {3}, {4} -- Today's Forecast: {5}, {6}" -f $channel.location.city,
       $channel.location.region,
       $channel.lastBuildDate,
       $current.text,
