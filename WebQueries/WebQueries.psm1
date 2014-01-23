@@ -61,22 +61,31 @@ function Get-Weather {
    #.Synopsis
    #  Get the current weather and today's forecast for the specified zipcode
    PARAM(
-      # The zipcode or yahoo code 
+      # The zipcode or Yahoo ID code 
       [Parameter(Position=0, ValueFromPipeline=$true)]
-      $zip=14586,
-
-      # If set, return the forecast in Celsius (defaults to Fahrenheit)
-      [Parameter()]
-      [switch]$Celsius
+      $YID=14586
    )
-   $url = "http`://weather.yahooapis.com/forecastrss?p={0}{1}" -f $zip, $(if($Celsius){"&u=c"})
+   $url = "http`://weather.yahooapis.com/forecastrss?p={0}" -f $YID
    $channel = ([xml](New-Object Net.WebClient).DownloadString($url)).rss.channel
    if($channel -and $channel.location.city) {
       $current = $channel.item.condition
+      function temp {
+         param($lo,$hi)
+         if($hi) { 
+            "{0} to {2}{4}F ({1:n0} to {3:n0}{4}C)" -f $lo, (($lo-32) * 5/9), $hi, (($hi-32) * 5/9), [char]176 
+         } else { "{0}{2}F ({1:n0}{2}C)" -f $lo, (($lo-32) * 5/9), [char]176 }
+      }
+
       $f = @($channel.item.forecast)[0]
-      "Current Weather at {0}: {1}: {2} {3}°{4}`nToday's Forecast: {5} {6}-{7}°{4}" -f $channel.location.city, $channel.lastBuildDate, $current.text, $current.temp, $(if($Celsius){"C"}else{"F"}), $f.text, $f.low, $f.high
+      "Current Weather at {0}, {1} as of {2}: {3} {4} -- Today's Forecast: {5} {6}" -f $channel.location.city,
+      $channel.location.region,
+      $channel.lastBuildDate,
+      $current.text,
+      (temp $current.temp),
+      $f.text,
+      (temp $f.low $f.high)
    } else {
-      "I can't find the weather for ${zip}, you should check this site for codes: http://www.edg3.co.uk/snippets/weather-location-codes/"
+      "I can't find the weather for ${YID}, you should check this site for codes: http://www.edg3.co.uk/snippets/weather-location-codes/"
    }
 }
 
