@@ -1,3 +1,32 @@
+function Format-Duration {
+   param([Parameter(ValueFromPipeline)]$duration)
+   process {
+      if($duration.TotalHours -gt .8 ) {
+         if($duration.Minutes -gt 50) {
+            $hours = "almost " + ($duration.Hours + 1) + " hours"
+         } elseif($duration.Minutes -lt 40 -and $duration.Minutes -gt 25) {
+            $hours = "and 1/2 hours"
+         } elseif($duration.Minutes -gt 10) {
+            $hours = "and 1/4 hours"
+         }
+      }
+      
+
+      if($duration.Days -gt 1) {
+         "{0} days and {1} ago" -f $duration.Days, $hours
+      } if($duration.Days) {
+         "{0} day, {1} ago" -f $duration.Days, $hours
+      } elseif($duration.Hours) {
+         "{0} $hours ago" -f $duration.Hours
+      } elseif($duration.Minutes -gt 2) {
+         "{0} minutes ago" -f $duration.Minutes
+      } elseif($duration.Minutes) {
+         "a minute ago"
+      } else { "seconds ago" }
+   }
+}
+
+
 Set-Alias paste Get-Pastebin
 function Get-Pastebin {
    #.Synopsis
@@ -8,25 +37,14 @@ function Get-Pastebin {
       [int]$lastlink = $script:lastlink
    )
 
-   $items = invoke-http get http://jaykul.com/feed | receive-http xml //item
+   $Pastes = Invoke-RestMethod "http://poshcode.com/api/v1/paste?limit=$count"
 
-   [int]$script:lastlink = Split-Path $items[0].link -Leaf
-
-   if($local:lastlink) {
-      Write-Verbose "Last Link: $lastlink"
-      $output = $false
-      foreach($link in $items | select-object -first 5) {
-         [int]$index = Split-Path $link.link -Leaf
-         if($local:lastlink -ge $index) { break }
-         "{0} just pasted {1} at {2} {3}" -f $link.creator, $link.title, ([datetime]::parse($link.pubDate).ToUniversalTime().ToString("dddd \a\t H:m:s \U\T\C")), $link.link
-         $output = $true
-      }
-      if(!$output) {
-         "To share code, please use http://jaykul.com?new and then run !paste"
-      }
-
-   } else {
-      "{0} pasted {1} on {2} {3}" -f $items[0].creator, $items[0].title, ([datetime]::parse($items[0].pubDate).ToUniversalTime().ToString("dddd \a\t H:m:s \U\T\C")), $items[0].link
+   foreach($p in $Pastes) { 
+      "'{0}' pasted {1}{2}: {3}" -f `
+         $p.description,
+         (([DateTime]$p.created - [DateTime]::UtcNow) | Format-Duration),
+         $(if($p.owner.username){" by " + $p.owner.username } else {""}),
+         ($p.files.filename -join ", ")
    }
 }
 
@@ -53,7 +71,7 @@ if(Import-Module "PoshCode\Scripts" -Function "Get-PoshCode" -Scope Local -EA 0 
          $count = 1
       }
          
-      Scripts\Get-PoshCode -Query "$query" -Count $count | ft id, Title, Web, Description -auto -HideTableHeaders
+      Scripts\Get-PoshCode -Query "$query" | Select -First $count | ft id, Title, Web, Description -auto -HideTableHeaders
    }
 }
 
