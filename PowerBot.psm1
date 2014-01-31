@@ -129,6 +129,7 @@ function Start-PowerBot {
       $script:irc.AutoRetry = $true
       $script:irc.AutoRetryDelay = 60
       $script:irc.SendDelay = 400
+      $script:irc.Encoding = [Text.Encoding]::UTF8
       # SmartIrc will track channels for us
       $script:irc.ActiveChannelSyncing = $true
       
