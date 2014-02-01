@@ -1,13 +1,22 @@
 function Format-Duration {
    param([Parameter(ValueFromPipeline)]$duration)
    process {
-      if($duration.TotalHours -gt .8 ) {
+      if($duration.TotalHours -gt 0.8 ) {
+         $hours = $duration.Hours
          if($duration.Minutes -gt 50) {
-            $hours = "almost " + ($duration.Hours + 1) + " hours"
-         } elseif($duration.Minutes -lt 40 -and $duration.Minutes -gt 25) {
-            $hours = "and 1/2 hours"
-         } elseif($duration.Minutes -gt 10) {
-            $hours = "and 1/4 hours"
+            if($duration.Hours -lt 1) {
+               $hours = "almost an hour"
+            } else {
+               $hours = "almost " + ($duration.Hours + 1) + " hours"
+            }
+         } elseif($duration.Minutes -lt 40 -and $duration.Minutes -gt 30) {
+            $hours = "over $hours and a half hours"
+         } elseif($duration.Minutes -lt 30 -and $duration.Minutes -gt 20) {
+            $hours = "almost $hours and a half hours"
+         } elseif($duration.Minutes -lt 20) {
+            $hours = "over $hours and a quarter hours"
+         }elseif($duration.Minutes -gt 10) {
+            $hours = "over $hours hours"
          }
       }
       
@@ -16,8 +25,8 @@ function Format-Duration {
          "{0} days and {1} ago" -f $duration.Days, $hours
       } if($duration.Days) {
          "{0} day, {1} ago" -f $duration.Days, $hours
-      } elseif($duration.Hours) {
-         "{0} $hours ago" -f $duration.Hours
+      } elseif($duration.Hours -or $duration.TotalHours -gt 0.8) {
+         "$hours ago" -f $duration.Hours
       } elseif($duration.Minutes -gt 2) {
          "{0} minutes ago" -f $duration.Minutes
       } elseif($duration.Minutes) {
@@ -26,12 +35,12 @@ function Format-Duration {
    }
 }
 
-$script:lastTime = [DateTime]::Now
+$script:lastTime = [DateTime]::Now.AddMinutes(-15)
 Set-Alias paste Get-Pastebin
 function Get-Pastebin {
    #.Synopsis
    #  Get the latest new posts from the channel paste bin
-   [CmdletBinding(DefaultParameterSetName="count")]
+   [CmdletBinding(DefaultParameterSetName="recent")]
    param(
       # The most recent paste that we know of
       [Parameter(ParameterSetName="recent")]
@@ -46,44 +55,48 @@ function Get-Pastebin {
 
    $Url = $Url.TrimEnd("\/")
 
-   if($PSCmdlets.ParameterSetName -eq "count") {
+   if($PSCmdlet.ParameterSetName -eq "count") {
       if($count -gt 5) { 
          Write-Output "$count results? More than three is kinda spammy, but that's ridiculous. Did you know you can use your browser to search PoshCode.org? Let me hook you up: http://PoshCode.org/?q=$(($query|%{$_.split(' ')}|%{[System.Web.HttpUtility]::UrlEncode($_)}) -join '+')" 
          Write-Output "I'll guess I'll get you the first one anyway:"
          $count = 1
       }
+   } else {
+      $count = 3
    }
 
    $Results = Invoke-RestMethod "$Url/api/v1/paste/?limit=$count"
-   Write-Verbose ($Results.Pastes | Out-String)
 
    $Script:lastTime = [DateTime]$Results.Pastes[0].created
 
-   if($PSCmdlets.ParameterSetName -eq "recent") {
+   if($PSCmdlet.ParameterSetName -eq "recent") {
       $Recent = $Results.Pastes | where { $since -lt [DateTime]$_.created  }
       if($Recent) {
          foreach($paste in $Recent) {
-            "'{0}' pasted {1}{2}: {3}" -f
+            "'{0}' pasted {1}{2}: {3} {4}" -f
             $paste.description,
-            (([DateTime]$paste.updated - [DateTime]::UtcNow) | Format-Duration),
-            (if($paste.owner.username){" by " + $paste.owner.username } else {""}),
-            ($paste.files.filename -join ", ")
+            $(([DateTime]::UtcNow - [DateTime]$paste.updated) | Format-Duration),
+            $(if($paste.owner.username){" by " + $paste.owner.username } else {""}),
+            $($paste.files.filename -join ", "),
+            $("$Url" + $paste.absolute_url)
 
          }
-         return
+      } else {
+         "To share code, please paste on http://PoshCode.com/"
       }
+      return
    }
 
    Write-Verbose ("Found {0} Pastes" -f $Results.Pastes.Count)
    foreach($p in $Results.Pastes) {
-      Write-Verbose ($p | Out-String)
+      Write-Verbose ($p.absolute_url | Out-String)
 
       New-Object PSObject -Property @{
          "Description" = $p.description
          "Created"     = $( if($p.created) { [DateTime]$p.created } )
          "Updated"     = $( if($p.updated) { [DateTime]$p.updated } )
          "Expires"     = $( if($p.Expires) { [DateTime]$p.Expires } else { [DateTime]::MaxValue } )
-         "Author"      = $( if(!$p.Owner) { "Anonymous" } else { $p.Owner | Select-Object Username, @{n="Url";e={"$Url" + $_.absolute_url}} } )
+         "Author"      = $( if(!$p.Owner) { "Anonymous" } else { $p.Owner.Username } )
          "Files"       = $( $p.Files | Select-Object -Expand filename )
          "Id"          = $p.id
          "Url"         = "$Url" + $p.absolute_url
