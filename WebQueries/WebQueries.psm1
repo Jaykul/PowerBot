@@ -26,28 +26,72 @@ function Format-Duration {
    }
 }
 
-
+$script:lastTime = [DateTime]::Now
 Set-Alias paste Get-Pastebin
 function Get-Pastebin {
    #.Synopsis
    #  Get the latest new posts from the channel paste bin
-   [CmdletBinding()]
+   [CmdletBinding(DefaultParameterSetName="count")]
    param(
       # The most recent paste that we know of
-      [int]$lastlink = $script:lastlink
+      [Parameter(ParameterSetName="recent")]
+      [DateTime]$since = $script:lastTime,
+
+      # How many pastes to fetch
+      [Parameter(ParameterSetName="count")]
+      [int]$count = 1,
+
+      [string]$Url = "http://poshcode.com"
    )
 
-   $Pastes = Invoke-RestMethod "http://poshcode.com/api/v1/paste?limit=$count"
+   $Url = $Url.TrimEnd("\/")
 
-   foreach($p in $Pastes) { 
-      "'{0}' pasted {1}{2}: {3}" -f `
-         $p.description,
-         (([DateTime]$p.created - [DateTime]::UtcNow) | Format-Duration),
-         $(if($p.owner.username){" by " + $p.owner.username } else {""}),
-         ($p.files.filename -join ", ")
+   if($PSCmdlets.ParameterSetName -eq "count") {
+      if($count -gt 5) { 
+         Write-Output "$count results? More than three is kinda spammy, but that's ridiculous. Did you know you can use your browser to search PoshCode.org? Let me hook you up: http://PoshCode.org/?q=$(($query|%{$_.split(' ')}|%{[System.Web.HttpUtility]::UrlEncode($_)}) -join '+')" 
+         Write-Output "I'll guess I'll get you the first one anyway:"
+         $count = 1
+      }
+   }
+
+   $Results = Invoke-RestMethod "$Url/api/v1/paste/?limit=$count"
+   Write-Verbose ($Results.Pastes | Out-String)
+
+   $Script:lastTime = [DateTime]$Results.Pastes[0].created
+
+   if($PSCmdlets.ParameterSetName -eq "recent") {
+      $Recent = $Results.Pastes | where { $since -lt [DateTime]$_.created  }
+      if($Recent) {
+         foreach($paste in $Recent) {
+            "'{0}' pasted {1}{2}: {3}" -f
+            $paste.description,
+            (([DateTime]$paste.updated - [DateTime]::UtcNow) | Format-Duration),
+            (if($paste.owner.username){" by " + $paste.owner.username } else {""}),
+            ($paste.files.filename -join ", ")
+
+         }
+         return
+      }
+   }
+
+   Write-Verbose ("Found {0} Pastes" -f $Results.Pastes.Count)
+   foreach($p in $Results.Pastes) {
+      Write-Verbose ($p | Out-String)
+
+      New-Object PSObject -Property @{
+         "Description" = $p.description
+         "Created"     = $( if($p.created) { [DateTime]$p.created } )
+         "Updated"     = $( if($p.updated) { [DateTime]$p.updated } )
+         "Expires"     = $( if($p.Expires) { [DateTime]$p.Expires } else { [DateTime]::MaxValue } )
+         "Author"      = $( if(!$p.Owner) { "Anonymous" } else { $p.Owner | Select-Object Username, @{n="Url";e={"$Url" + $_.absolute_url}} } )
+         "Files"       = $( $p.Files | Select-Object -Expand filename )
+         "Id"          = $p.id
+         "Url"         = "$Url" + $p.absolute_url
+      } | % { $_.PSTypeNames.Insert(0, "Huddled.PoshCode.PasteInfo"); $_ }
    }
 }
 
+Update-TypeData -TypeName "Huddled.PoshCode.PasteInfo" -DefaultDisplayProperty Url -DefaultDisplayPropertySet "Updated","Author","Files","Description" -ErrorAction SilentlyContinue
 
 if(Import-Module "PoshCode\Scripts" -Function "Get-PoshCode" -Scope Local -EA 0 -Passthru) {
    function Get-PoshCode {
@@ -66,7 +110,7 @@ if(Import-Module "PoshCode\Scripts" -Function "Get-PoshCode" -Scope Local -EA 0 
       )
 
       if($count -gt 5) { 
-         Write-Output "$query results? More than three is kinda spammy, but that's ridiculous. Did you know you can use your browser to search PoshCode.org? Let me hook you up: http://PoshCode.org/?q=$(($query|%{$_.split(' ')}|%{[System.Web.HttpUtility]::UrlEncode($_)}) -join '+')" 
+         Write-Output "$count results? More than three is kinda spammy, but that's ridiculous. Did you know you can use your browser to search PoshCode.org? Let me hook you up: http://PoshCode.org/?q=$(($query|%{$_.split(' ')}|%{[System.Web.HttpUtility]::UrlEncode($_)}) -join '+')" 
          Write-Output "I'll guess I'll get you the first one anyway:"
          $count = 1
       }
