@@ -353,9 +353,9 @@ function Invoke-ChuckNorris {
 
    if($FirstName -eq "me") { $FirstName = $Nick }
    if($FirstName) {
-      (irm "http://api.icndb.com/jokes/random?exclude=[explicit]&firstName=${FirstName}&lastName=${LastName}").value.joke -replace "  "," "
+      [System.Web.HttpUtility]::HtmlDecode((irm "http://api.icndb.com/jokes/random?exclude=[explicit]&firstName=${FirstName}&lastName=${LastName}").value.joke) -replace "  "," "
    } else {
-      (irm "http://api.icndb.com/jokes/random?exclude=[explicit]").value.joke
+      [System.Web.HttpUtility]::HtmlDecode((irm "http://api.icndb.com/jokes/random?exclude=[explicit]").value.joke)
    }
 }
 
