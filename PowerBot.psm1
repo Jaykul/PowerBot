@@ -168,7 +168,9 @@ function Start-PowerBot {
       ##   $_     - the IrcEventArgs, which just has a Data member
       $script:irc.Add_OnQueryMessage( {OnQueryMessage_ProcessCommands} )
       $script:irc.Add_OnChannelMessage( {OnChannelMessage_ProcessCommands} )
-      $script:irc.Add_OnChannelMessage( {OnChannelMessage_ResolveUrls} )
+
+      # Register-ObjectEvent -InputObject $script:irc -EventName "OnChannelMessage" -SourceIdentifier "PoshCodeCommands" -Action {OnChannelMessage_ProcessCommands} -MessageData $script:irc
+
       $script:irc.Add_OnCtcpReply( {OnCtcpReply_StoreData} )
 
       ## UserModeChange (this happens, among other things, when we first go online)
@@ -234,12 +236,7 @@ function Resume-PowerBot {
 }
 
 function Update-CommandModule {
-   param(
-      [Hashtable[]]$CommandModules = $ExecutionContext.SessionState.Module.PrivateData.CommandModules,
-      [Hashtable[]]$AdminModules = $ExecutionContext.SessionState.Module.PrivateData.AdminModules,
-      [Hashtable[]]$OwnerModules = $ExecutionContext.SessionState.Module.PrivateData.OwnerModules
-   )   
-   . $PowerBotScriptRoot\UpdateCommands.ps1 $CommandModules $AdminModules $OwnerModules
+   . $PowerBotScriptRoot\UpdateCommands.ps1
 }
 
 function Stop-PowerBot {
@@ -276,10 +273,23 @@ function Test-Command {
 
 }
 
-function Process-Command {
+function OnQueryMessage_ProcessCommands { 
+   Process-Message -Data $_.Data -Sender $_.Data.Nick
+}
+
+function OnChannelMessage_ProcessCommands {
+   Process-Message -Data $_.Data -Sender $_.Data.Channel
+}
+
+function Process-Message {
    param($Data, $Sender)
    Write-Verbose ("Message: " + $Data.Message)
-   if($Data.Message[0] -ne "!" -or $Data.Message.Length -eq 1) { return }
+
+   $Prefix = Get-Setting CommandPrefix
+
+
+   # If it's not prefixed, then it's not a command
+   if($Data.Message[0] -ne $Prefix -or $Data.Message.Length -eq 1) { return }
    
    $ScriptString = $Data.Message.SubString(1)
    $From     = $Data.From
@@ -355,22 +365,6 @@ function Process-Command {
          Write-Warning "EXCEPTION IN COMMAND ($Script): $_"
       }
    }
-}
-
-
-function OnQueryMessage_ProcessCommands { 
-   Process-Command -Data $_.Data -Sender $_.Data.Nick
-}
-
-function OnChannelMessage_ProcessCommands {
-   Process-Command -Data $_.Data -Sender $_.Data.Channel
-}
-
-function OnChannelMessage_ResolveUrls {
-   $c = $_.Data.Channel
-   $n = $_.Data.Nick
-   $m = $_.Data.Message
-   Resolve-URL $m | % { $irc.SendMessage("Message", $c, "<$($n)> $_" ) }
 }
 
 function OnCtcpReply_StoreData {

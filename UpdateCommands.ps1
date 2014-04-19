@@ -1,13 +1,58 @@
 [CmdletBinding()]
 param(
-   [Hashtable[]]$CommandModules,
-   [Hashtable[]]$AdminModules,
-   [Hashtable[]]$OwnerModules
+   [Hashtable[]]$Settings = $ExecutionContext.SessionState.Module.PrivateData
 )
 
 if( $ExecutionContext.SessionState.Module.Name -ne "PowerBot" ) {
    throw "You can only UpdateCommands from within the PowerBot Module ExecutionContext"
 }
+
+$OldSettings = $Settings
+
+#################################################################
+# Remove all the old hooks and recreate them
+$script:irc = PowerBot\Get-PowerBotIrcClient
+
+Write-Host $($($irc | ft UserName, NickName, Address, IsConnected -auto | Out-String -Stream) -Join "`n") -Fore Green
+
+# Unregister-Event -SourceIdentifier "PoshCodeHooks" -ErrorAction SilentlyContinue
+foreach($HookModule in $OldSettings.HookModules.Keys) {
+   foreach($Hook in $OldSettings.HookModules.$HookModule.Keys) {
+      $ModuleName = @($HookModule -split "\\")[-1]
+      $EventName = $OldSettings.HookModules.$HookModule.$Hook
+      #$Action = [ScriptBlock]::Create("{$ModuleName\$Hook}")
+      $Action = [ScriptBlock]::Create("{Write-Host `"${Hook}: `$_`"; $ModuleName\$Hook}")
+
+      Write-Debug "UnHook On$EventName to $Action"
+      try {
+         $irc."Remove_On$EventName"( $Action )
+      } catch {
+         Write-Error "Error unhooking the On$EventName Event"
+      }
+   }
+}
+
+$NewSettings = Import-LocalizedData -BaseDirectory $ExecutionContext.SessionState.Module.ModuleBase -FileName $ExecutionContext.SessionState.Module.Name
+$NewSettings = $NewSettings.PrivateData
+
+foreach($HookModule in $NewSettings.HookModules.Keys) {
+   Import-Module $HookModule -Args $irc -Force
+   foreach($Hook in $NewSettings.HookModules.$HookModule.Keys) {
+      $ModuleName = @($HookModule -split "\\")[-1]
+      $EventName = $NewSettings.HookModules.$HookModule.$Hook
+      $Action = [ScriptBlock]::Create("$ModuleName\$Hook `$this `$_" )
+      Write-Debug "Hook On$EventName to $Action"
+      try {
+         $irc."Add_On$EventName"( $Action )
+      } catch {
+         Write-Error "Error hooking the On$EventName Event"
+      }
+   }
+}
+
+[Hashtable[]]$CommandModules = $NewSettings.CommandModules
+[Hashtable[]]$AdminModules   = $NewSettings.AdminModules
+[Hashtable[]]$OwnerModules   = $NewSettings.OwnerModules
 
 Remove-Module PowerBotCommands, PowerBotOwnerCommands, PowerBotAdminCommands -ErrorAction SilentlyContinue
 
@@ -90,7 +135,6 @@ New-Module PowerBotOwnerCommands {
 } -Args (,$OwnerModules) | Import-Module -Global
 
 
-
 #################################################################
 # Commands for admins only (they also get all the commands below)
 New-Module PowerBotAdminCommands {
@@ -105,7 +149,7 @@ New-Module PowerBotAdminCommands {
    function Update-Command {
      [CmdletBinding()]param()
      &(Get-Module PowerBot) { 
-       . $PowerBotScriptRoot\UpdateCommands.ps1 $irc.CommandModules $irc.AdminModules $irc.OwnerModules
+       . $PowerBotScriptRoot\UpdateCommands.ps1
      }
    }
 

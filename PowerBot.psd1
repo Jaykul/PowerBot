@@ -66,6 +66,14 @@ PrivateData = @{
    CommandPrefix = "#"
 
    Owner = "Jaykul!~Jaykul@geoshell/dev/Jaykul"
+   
+   HookModules = @{
+      "PowerBot\BotHooks" = @{
+         "Expand-Url" = "ChannelMessage"
+         "Test-Language" = "ChannelMessage"
+      }
+
+   }
    CommandModules = @(
       @{Name="Bing"}, 
       @{Name="FAQ"},
