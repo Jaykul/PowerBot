@@ -19,7 +19,7 @@ if(!$PowerBotScriptRoot) {
   $PowerBotScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
 }
 
-if(!(Test-Path data:)) {
+if((Get-Command Mount-SQLite) -and -not (Test-Path data:)) {
    $BotDataFile = (Join-Path $PowerBotScriptRoot "botdata.sqlite")
    Write-Host "Bot Data: $BotDataFile"
    Mount-SQLite -Name data -DataSource $BotDataFile
@@ -69,54 +69,62 @@ function Start-PowerBot {
    param(
       # The IRC channel(s) to connect to
       [Parameter(Position=0)]
-      [string[]]$Channels    = $ExecutionContext.SessionState.Module.PrivateData.Channels,
+      [string[]]$Channels    = $(Get-Setting Channels),
    
       # The nickname to use (usually you should provide an alternate)
       # NOTE, the FIRST nick should be associated with the password, if any
       [Parameter(Position=1)]
-      [string[]]$nick        = $ExecutionContext.SessionState.Module.PrivateData.Nick,
+      [string[]]$Nick        = $(Get-Setting Nick),
       
       # The nickserv password to use (will be sent in a PRIVMSG to NICKSERV to IDENTIFY)
       [Parameter(Position=2)]
-      [string]$password      = $ExecutionContext.SessionState.Module.PrivateData.Password,
+      [string]$Password      = $(Get-Setting Password),
    
       # The server to connect to 
       [Parameter(Position=5)]
-      [string]$server        = $ExecutionContext.SessionState.Module.PrivateData.Server,
+      [string]$Server        = $(Get-Setting Server),
    
       # The port to use for connection
       [Parameter(Position=6)]
-      [int]$port             = $ExecutionContext.SessionState.Module.PrivateData.Port,
+      [int]$Port             = $(Get-Setting Port),
    
       # The "real name" to be returned to queries from the IRC server
-      [string]$realname      = $ExecutionContext.SessionState.Module.PrivateData.RealName,
+      [string]$RealName      = $(Get-Setting RealName),
    
       # The proxy server
-      [string]$ProxyServer   = $ExecutionContext.SessionState.Module.PrivateData.ProxyServer,
+      [string]$ProxyServer   = $(Get-Setting ProxyServer),
    
       # The port for the proxy server
-      [int]$ProxyPort        = $ExecutionContext.SessionState.Module.PrivateData.ProxyPort,
+      [int]$ProxyPort        = $(Get-Setting ProxyPort),
    
       # The proxy username (if required)
-      [string]$ProxyUserName = $ExecutionContext.SessionState.Module.PrivateData.ProxyUserName,
+      [string]$ProxyUserName = $(Get-Setting ProxyUserName),
    
       # The proxy password (if required)
-      [string]$ProxyPassword = $ExecutionContext.SessionState.Module.PrivateData.ProxyPassword,
+      [string]$ProxyPassword = $(Get-Setting ProxyPassword),
 
       # Recreate the IRC client even if it already exists
       [switch]$Force,
 
       # The bot owner(s) have access to all commands
-      [String[]]$Owner = $ExecutionContext.SessionState.Module.PrivateData.Owner,
+      [String[]]$Owner = $(Get-Setting Owner),
       # The bot admin(s) have access to admin and regular commands
-      [String[]]$Admin = $ExecutionContext.SessionState.Module.PrivateData.Admin,
+      [String[]]$Admin = $(Get-Setting Admin),
 
-      [Hashtable[]]$CommandModules = $ExecutionContext.SessionState.Module.PrivateData.CommandModules,
-      [Hashtable[]]$AdminModules = $ExecutionContext.SessionState.Module.PrivateData.AdminModules,
-      [Hashtable[]]$OwnerModules = $ExecutionContext.SessionState.Module.PrivateData.OwnerModules
+      [Hashtable[]]$CommandModules = $(Get-Setting CommandModules),
+      [Hashtable[]]$AdminModules = $(Get-Setting AdminModules),
+      [Hashtable[]]$OwnerModules = $(Get-Setting OwnerModules)
    )
 
-   Write-Verbose "PrivateData Defaults:`n`n$( $ExecutionContext.SessionState.Module.PrivateData | Out-String )"
+   if($Nick.Length -lt 1 -or $Nick[0].Length -lt 1) {
+      throw "At least one nickname is required. Please pass -Nick or set it in PrivateData"
+   }
+   if(!$realname) {
+      throw "The RealName parameter is required. Please pass -RealName or set it in PrivateData"
+   }   
+   if(!$password) {
+      throw "The Password parameter is required. Please pass -Password or set it in PrivateData"
+   }
 
    if($Force -or !(Test-Path -Path Variable:Script:Irc)) {
       $script:irc = New-Object Meebey.SmartIrc4net.IrcClient
@@ -371,4 +379,18 @@ function OnCtcpReply_StoreData {
    }
    
    $Script:PowerBotCtcpData[$_.Data.Nick][$_.CtcpCommand] = $_.CtcpParameter
+}
+
+
+function Get-Setting {
+   param(
+      # The setting name to retrieve
+      [Parameter(Position=0, Mandatory=$true)]
+      $Name
+   )
+   $PrivateData = $MyInvocation.MyCommand.Module.PrivateData
+   foreach($Level in $Name -split '\.') {
+      $PrivateData = $PrivateData.$Level
+   }
+   return $PrivateData
 }

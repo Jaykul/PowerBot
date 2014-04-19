@@ -28,7 +28,7 @@ PowerShellVersion = '4.0'
 CLRVersion = '4.0'
 
 # Functions to export from this manifest.
-FunctionsToExport = 'Start-PowerBot', 'Resume-PowerBot', 'Stop-PowerBot', 'Get-PowerBotIrcClient', 'Get-Command'
+FunctionsToExport = 'Start-PowerBot', 'Resume-PowerBot', 'Stop-PowerBot', 'Get-PowerBotIrcClient'
 
 # Aliases to export from this manifest.
 # AliasesToExport = ''
@@ -40,7 +40,7 @@ FunctionsToExport = 'Start-PowerBot', 'Resume-PowerBot', 'Stop-PowerBot', 'Get-P
 #CmdletsToExport = ''
 
 # This is a list of other modules that must be loaded before this module.
-RequiredModules = @('HttpRest', 'ResolveAlias', 'SQLite', 'Strings')
+RequiredModules = @('HttpRest', 'ResolveAlias', 'Strings')
 
 # The script files (.ps1) that are loaded before this module.
 ScriptsToProcess = @()
@@ -62,13 +62,16 @@ PrivateData = @{
    Server = "chat.freenode.net"
    Port = 8001
    Channels = @('#PowerBot')
+
+   CommandPrefix = "#"
+
    Owner = "Jaykul!~Jaykul@geoshell/dev/Jaykul"
    CommandModules = @(
       @{Name="Bing"}, 
-      @{Name="FAQ"}, 
-      @{Name="Math"}, 
-      @{Name="PowerBot\BotCommands"}, 
-      @{Name="PowerBot\WebQueries"}, 
+      @{Name="FAQ"},
+      @{Name="Math"},
+      @{Name="PowerBot\BotCommands"},
+      @{Name="PowerBot\WebQueries"},
       @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"},
       @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"}
    )
