@@ -42,10 +42,7 @@ function Get-Help() {
 
          [Parameter(ParameterSetName='Parameters')]
          [System.String]
-         ${Parameter},
-
-         [Switch]
-         ${Online}
+         ${Parameter}
    )
    begin
    {
@@ -131,6 +128,10 @@ function Get-Help() {
             Write-Output "I couldn't find the help file for '$Name', sorry.  I probably don't have the right module available."
             return
          }
+         if(!$Name) {
+            Write-Output "Get-Help Displays information about PowerShell commands. You must specify a command name."
+            return
+         }
 
          # $wrappedCmd = $ExecutionContext.InvokeCommand.GetCmdlet('Get-Help')
          $wrappedCmd = Microsoft.PowerShell.Core\Get-Command Microsoft.PowerShell.Core\Get-Help -Type Cmdlet
@@ -179,10 +180,6 @@ function Get-Help() {
          }
       }
    }
-   <#
-      .ForwardHelpTargetName Get-Help
-      .ForwardHelpCategory Cmdlet
-   #>
 }
 
 
