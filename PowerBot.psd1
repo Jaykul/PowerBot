@@ -16,7 +16,7 @@ CompanyName = 'Http://HuddledMasses.org'
 Copyright = '(c) 2014, Joel Bennett'
 
 # The version of this module.
-ModuleVersion = '3.0'
+ModuleVersion = '3.1'
 
 # A description of this module.
 Description = 'PowerBot the PowerShell IRC Bot'
