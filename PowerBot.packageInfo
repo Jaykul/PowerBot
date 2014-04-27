@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+  <id>
+  </id>
+  <title type="text">Module Updates</title>
+  <updated>2014-04-20T06:14:52.3417158Z</updated>
+  <entry>
+    <id>
+    </id>
+    <title type="text">PowerBot</title>
+    <summary type="text">PowerBot: the PowerShell IRC Bot</summary>
+    <author>
+      <name>Joel Bennett</name>
+    </author>
+    <content type="application/zip" src="" />
+    <m:properties>
+      <d:Version>3.4</d:Version>
+      <d:Dependencies>ResolveAlias::|Strings::|Bing::|FAQ::|Math::|WebQueries:</d:Dependencies>
+      <!-- These are RECOMMENDED: -->
+      <d:Copyright>(c) 2014, Joel Bennett</d:Copyright>
+      <d:Tags>PowerShell Module</d:Tags>
+      <d:IsPrerelease m:type="Edm.Boolean">false</d:IsPrerelease>
+    </m:properties>
+  </entry>
+</feed>

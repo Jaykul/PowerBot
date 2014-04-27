@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>PowerBot</id>
+    <version>3.4</version>
+    <authors>Joel Bennett</authors>
+    <owners>Http://HuddledMasses.org</owners>
+    <description>PowerBot: the PowerShell IRC Bot</description>
+    <copyright>(c) 2014, Joel Bennett</copyright>
+    <tags>PowerShell Module</tags>
+    <dependencies>
+      <dependency id="WebQueries" />
+    </dependencies>
+  </metadata>
+</package>
