@@ -9,7 +9,6 @@
 ## You need to configure the PrivateData in the PowerBot.psd1 file
 ############################################################################################
 
-$Script:PowerBotCtcpData = @{}
 ## Force some default ParametersValues
 $PSDefaultParameterValues."Out-String:Stream" = $true
 $PSDefaultParameterValues."Format-Table:Auto" = $true
@@ -166,12 +165,6 @@ function Start-PowerBot {
       ##   In the case of SmartIrc4Net:
       ##   $This  - usually the connection, and such ...
       ##   $_     - the IrcEventArgs, which just has a Data member
-      $script:irc.Add_OnQueryMessage( {OnQueryMessage_ProcessCommands} )
-      $script:irc.Add_OnChannelMessage( {OnChannelMessage_ProcessCommands} )
-
-      # Register-ObjectEvent -InputObject $script:irc -EventName "OnChannelMessage" -SourceIdentifier "PoshCodeCommands" -Action {OnChannelMessage_ProcessCommands} -MessageData $script:irc
-
-      $script:irc.Add_OnCtcpReply( {OnCtcpReply_StoreData} )
 
       ## UserModeChange (this happens, among other things, when we first go online)
       $script:irc.Add_OnUserModeChange( {
@@ -193,6 +186,10 @@ function Start-PowerBot {
 
       ## Who sends us the information about who we are, and gives us a chance to (re)join channels
       $script:irc.Add_OnWho({OnWho_UserData})
+
+      # We hook our command syntax natively
+      $script:irc.Add_OnQueryMessage( {OnQueryMessage_ProcessCommands} )
+      $script:irc.Add_OnChannelMessage( {OnChannelMessage_ProcessCommands} )
    }
    
    # Connect to the server
@@ -366,15 +363,6 @@ function Process-Message {
       }
    }
 }
-
-function OnCtcpReply_StoreData {
-   if(!$Script:PowerBotCtcpData.ContainsKey($_.Data.Nick)) {
-      $Script:PowerBotCtcpData.Add( $_.Data.Nick, @{} )
-   }
-   
-   $Script:PowerBotCtcpData[$_.Data.Nick][$_.CtcpCommand] = $_.CtcpParameter
-}
-
 
 function Get-Setting {
    param(

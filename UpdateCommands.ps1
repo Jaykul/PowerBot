@@ -25,6 +25,7 @@ foreach($HookModule in $OldSettings.HookModules.Keys) {
 
       Write-Debug "UnHook On$EventName to $Action"
       try {
+         #Requires -version 4.0
          $irc."Remove_On$EventName"( $Action )
       } catch {
          Write-Error "Error unhooking the On$EventName Event"
@@ -43,6 +44,7 @@ foreach($HookModule in $NewSettings.HookModules.Keys) {
       $Action = [ScriptBlock]::Create("$ModuleName\$Hook `$this `$_" )
       Write-Debug "Hook On$EventName to $Action"
       try {
+         #Requires -version 4.0
          $irc."Add_On$EventName"( $Action )
       } catch {
          Write-Error "Error hooking the On$EventName Event"
