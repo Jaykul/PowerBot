@@ -183,4 +183,4 @@ function Get-Help() {
 }
 
 
-Export-ModuleMember -Function *-* -Cmdlet * -Alias *
+Export-ModuleMember -Function Get-Help

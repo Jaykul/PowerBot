@@ -40,7 +40,7 @@ FunctionsToExport = 'Start-PowerBot', 'Resume-PowerBot', 'Stop-PowerBot', 'Get-P
 #CmdletsToExport = ''
 
 # This is a list of other modules that must be loaded before this module.
-RequiredModules = @('HttpRest', 'ResolveAlias', 'Strings')
+RequiredModules = @('ResolveAlias', 'Strings', 'Bing', 'FAQ', 'Math', 'WebQueries')
 
 # The script files (.ps1) that are loaded before this module.
 ScriptsToProcess = @()
@@ -78,10 +78,10 @@ PrivateData = @{
       @{Name="Bing"}, 
       @{Name="FAQ"},
       @{Name="Math"},
+      @{Name="WebQueries"},
+      @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"},
       @{Name="PowerBot\BotCommands"},
-      @{Name="PowerBot\WebQueries"},
-      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"},
-      @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"}
+      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
    )
    AdminModules = @(
       @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "New-Alias"}

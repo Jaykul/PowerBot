@@ -42,7 +42,7 @@ function Resolve-URL {
 }
 
 
-$tinyDomains = 'is.gd','ff.im','xrl.us','cli.gs','snurl.com','snipr.com','snipurl.com','twurl.nl','bit.ly','j.mp','amzn.to','tr.imsu.pr'
+$tinyDomains = 'is.gd','ff.im','xrl.us','cli.gs','snurl.com','snipr.com','snipurl.com','twurl.nl','bit.ly','j.mp','amzn.to','tr.imsu.pr','tinyUrl.com','t.co'
 $tinyDomains = @($tinyDomains | %{ [regex]::escape($_) }) -join '|'
 [regex]$tinyUrl   = "(?:https?://)?(?:$tinyDomains)/([^?/ ]+)\b"
 
