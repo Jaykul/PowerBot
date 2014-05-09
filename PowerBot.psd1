@@ -56,7 +56,7 @@ RequiredAssemblies = '.\bin\Meebey.SmartIrc4net.dll' # Meebey.SmartIrc4net, Vers
 
 # Module specific private data can be passed via this member.
 PrivateData = @{
-   # Nick = @('PowerBot')
+   Nick = @('PowerBot')
    # RealName = ''
    # Password = ''
    Server = "chat.freenode.net"
@@ -65,14 +65,17 @@ PrivateData = @{
 
    CommandPrefix = "#"
 
-   Owner = "Jaykul!~Jaykul@geoshell/dev/Jaykul"
+   Owner = "Jaykul!jaykul@geoshell/dev/Jaykul"
    
    HookModules = @{
       "PowerBot\BotHooks" = @{
          "Expand-Url" = "ChannelMessage"
          "Test-Language" = "ChannelMessage"
       }
-
+      "PowerBot\UserTracking" = @{
+         "Sync-Join" = "Join"
+         "Update-NickservInfo" = "QueryNotice"
+      }
    }
    CommandModules = @(
       @{Name="Bing"}, 

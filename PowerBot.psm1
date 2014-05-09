@@ -66,25 +66,21 @@ function Start-PowerBot {
    #  All of the parameters on this method use defaults from the PrivateData hashtable in the module manifest.
    [CmdletBinding()]
    param(
-      # The IRC channel(s) to connect to
-      [Parameter(Position=0)]
-      [string[]]$Channels    = $(Get-Setting Channels),
-   
       # The nickname to use (usually you should provide an alternate)
       # NOTE, the FIRST nick should be associated with the password, if any
-      [Parameter(Position=1)]
+      [Parameter(Position=0)]
       [string[]]$Nick        = $(Get-Setting Nick),
+
+      # The IRC channel(s) to connect to
+      [string[]]$Channels    = $(Get-Setting Channels),
       
       # The nickserv password to use (will be sent in a PRIVMSG to NICKSERV to IDENTIFY)
-      [Parameter(Position=2)]
       [string]$Password      = $(Get-Setting Password),
    
       # The server to connect to 
-      [Parameter(Position=5)]
       [string]$Server        = $(Get-Setting Server),
    
       # The port to use for connection
-      [Parameter(Position=6)]
       [int]$Port             = $(Get-Setting Port),
    
       # The "real name" to be returned to queries from the IRC server
@@ -119,11 +115,8 @@ function Start-PowerBot {
       throw "At least one nickname is required. Please pass -Nick or set it in PrivateData"
    }
    if(!$realname) {
-      throw "The RealName parameter is required. Please pass -RealName or set it in PrivateData"
+      $realname = "PowerBot http://github.org/Jaykul/PowerBot"
    }   
-   if(!$password) {
-      throw "The Password parameter is required. Please pass -Password or set it in PrivateData"
-   }
 
    if($Force -or !(Test-Path -Path Variable:Script:Irc)) {
       $script:irc = New-Object Meebey.SmartIrc4net.IrcClient
@@ -172,11 +165,13 @@ function Start-PowerBot {
          if(!$irc.Who) {
             $Nick = $This.NicknameList[0]
 
-            # Manual login to nickserv:
-            Send-Message -To "Nickserv" -Message "IDENTIFY $Nick $($This.Password)"
-            # TODO: The "REGAIN" command may only work on freenode
-            if($This.Nickname -ne $Nick) {
-               Send-Message -To "Nickserv" -Message "REGAIN $Nick $($This.Password)"
+            if($Password) {
+               # Manual login to nickserv:
+               Send-Message -To "Nickserv" -Message "IDENTIFY $Nick $($This.Password)"
+               # TODO: The "REGAIN" command may only work on freenode
+               if($This.Nickname -ne $Nick) {
+                  Send-Message -To "Nickserv" -Message "REGAIN $Nick $($This.Password)"
+               }
             }
 
             # Trigger WHO so we can figure out our own hostmask etc.
@@ -195,7 +190,11 @@ function Start-PowerBot {
    # Connect to the server
    $script:irc.Connect($server, $port)
    # Login to the server
-   $script:irc.Login(([string[]]$nick), $realname, 0, $nick[0], $password)
+   if($Password) {
+      $script:irc.Login(([string[]]$nick), $realname, 0, $nick[0], $password)
+   } else {
+      $script:irc.Login(([string[]]$nick), $realname, 0, $nick[0])
+   }
    Resume-PowerBot # Shortcut so starting this thing up only takes one command
 }
 
@@ -229,7 +228,6 @@ function Resume-PowerBot {
          $irc.ListenOnce($false) 
       }
    }
-   Stop-PowerBot
 }
 
 function Update-CommandModule {
@@ -284,12 +282,16 @@ function Process-Message {
 
    $Prefix = Get-Setting CommandPrefix
 
-
-   # If it's not prefixed, then it's not a command
+   # If it's not prefixed, then we don't process it here, because it's not a command
    if($Data.Message[0] -ne $Prefix -or $Data.Message.Length -eq 1) { return }
    
    $ScriptString = $Data.Message.SubString(1)
-   $From     = $Data.From
+   $global:Channel  = $Data.Channel
+   $global:From     = $Data.From
+   $global:Hostname = $Data.Host
+   $global:Ident    = $Data.Ident
+   $global:Message  = $Data.Message
+   $global:Nick     = $Data.Nick
    
    $AllowedModule = @("PowerBotCommands")
    if(($irc.BotOwner | %{ $From -like $_ }) -Contains $True) {
@@ -299,11 +301,6 @@ function Process-Message {
       $AllowedModule += "OwnerCommands", "PowerBotAdminCommands"
    }
    
-   $global:Channel  = $Data.Channel
-   $global:Hostname = $Data.Host
-   $global:Ident    = $Data.Ident
-   $global:Message  = $Data.Message
-   $global:Nick     = $Data.Nick
    
    Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
    $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
@@ -349,7 +346,7 @@ function Process-Message {
      # Which is one less than the real MaxLength:
      #    453 = 512 - 2 - 57 
    
-   $global:MaxLength = 497 - $Sender.Length - $irc.Who.Mask.Length 
+   $local:MaxLength = 497 - $Sender.Length - $irc.Who.Mask.Length 
    if($Script) {
       Write-Verbose "SCRIPT: $Script"
       try {
@@ -362,6 +359,13 @@ function Process-Message {
          Write-Warning "EXCEPTION IN COMMAND ($Script): $_"
       }
    }
+
+   Remove-Item Variable:Global:Channel
+   Remove-Item Variable:Global:From
+   Remove-Item Variable:Global:Hostname
+   Remove-Item Variable:Global:Ident
+   Remove-Item Variable:Global:Message
+   Remove-Item Variable:Global:Nick
 }
 
 function Get-Setting {
@@ -376,3 +380,18 @@ function Get-Setting {
    }
    return $PrivateData
 }
+
+
+
+Add-Type @"
+using System;
+using System.Management.Automation;
+using System.Collections.Generic;
+
+[AttributeUsage(AttributeTargets.Method)]
+public class PowerBotHookAttribute : Attribute
+{
+   // The event(s) this method handles
+   public string Event { get; set; }
+}
+"@

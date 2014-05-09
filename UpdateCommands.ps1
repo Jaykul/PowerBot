@@ -15,48 +15,83 @@ $script:irc = PowerBot\Get-PowerBotIrcClient
 
 Write-Host $($($irc | ft UserName, NickName, Address, IsConnected -auto | Out-String -Stream) -Join "`n") -Fore Green
 
-# Unregister-Event -SourceIdentifier "PoshCodeHooks" -ErrorAction SilentlyContinue
-foreach($HookModule in $OldSettings.HookModules.Keys) {
-   foreach($Hook in $OldSettings.HookModules.$HookModule.Keys) {
-      $ModuleName = @($HookModule -split "\\")[-1]
-      $EventName = $OldSettings.HookModules.$HookModule.$Hook
-      #$Action = [ScriptBlock]::Create("{$ModuleName\$Hook}")
-      $Action = [ScriptBlock]::Create("{Write-Host `"${Hook}: `$_`"; $ModuleName\$Hook}")
-
-      Write-Debug "UnHook On$EventName to $Action"
-      try {
-         #Requires -version 4.0
-         $irc."Remove_On$EventName"( $Action )
-      } catch {
-         Write-Error "Error unhooking the On$EventName Event"
-      }
-   }
-}
-
 $NewSettings = Import-LocalizedData -BaseDirectory $ExecutionContext.SessionState.Module.ModuleBase -FileName $ExecutionContext.SessionState.Module.Name
 $NewSettings = $NewSettings.PrivateData
-
-foreach($HookModule in $NewSettings.HookModules.Keys) {
-   Import-Module $HookModule -Args $irc -Force
-   foreach($Hook in $NewSettings.HookModules.$HookModule.Keys) {
-      $ModuleName = @($HookModule -split "\\")[-1]
-      $EventName = $NewSettings.HookModules.$HookModule.$Hook
-      $Action = [ScriptBlock]::Create("$ModuleName\$Hook `$this `$_" )
-      Write-Debug "Hook On$EventName to $Action"
-      try {
-         #Requires -version 4.0
-         $irc."Add_On$EventName"( $Action )
-      } catch {
-         Write-Error "Error hooking the On$EventName Event"
-      }
-   }
-}
 
 [Hashtable[]]$CommandModules = $NewSettings.CommandModules
 [Hashtable[]]$AdminModules   = $NewSettings.AdminModules
 [Hashtable[]]$OwnerModules   = $NewSettings.OwnerModules
+[Hashtable[]]$HookModules    = $NewSettings.HookModules
 
-Remove-Module PowerBotCommands, PowerBotOwnerCommands, PowerBotAdminCommands -ErrorAction SilentlyContinue
+Remove-Module PowerBotHooks, PowerBotCommands, PowerBotOwnerCommands, PowerBotAdminCommands -ErrorAction SilentlyContinue
+
+New-Module PowerBotHooks {
+   param($Irc, $HookModules)
+   foreach($module in $HookModules.Keys) {
+      Write-Host "Importing" $module "for" $ExecutionContext.SessionState.Module.Name
+      Import-Module $module -Force -Passthru -Args $Irc
+   }
+
+   function ByHookOrCrook { 
+      $MyInvocation.MyCommand.Module.OnRemove = { 
+         foreach($HookModule in $HookModules.Keys) {
+            foreach($Hook in $HookModules.$HookModule.Keys) {
+               $ModuleName = @($HookModule -split "\\")[-1]
+               $EventName = $HookModules.$HookModule.$Hook
+               #$Action = [ScriptBlock]::Create("{$ModuleName\$Hook}")
+               $Action = [ScriptBlock]::Create("{Write-Host `"${Hook}: `$_`"; $ModuleName\$Hook}")
+
+               Write-Host "UnHook On$EventName to $Action"
+               try {
+                  #Requires -version 4.0
+                  $irc."Remove_On$EventName"( $Action )
+               } catch {
+                  Write-Error "Error unhooking the On$EventName Event"
+               }
+            }
+         }
+      }
+      Remove-Item Function:ByHookOrCrook
+   }
+
+   foreach($HookModule in $HookModules.Keys) {
+      foreach($Hook in $HookModules.$HookModule.Keys) {
+         $ModuleName = @($HookModule -split "\\")[-1]
+         $EventName = $HookModules.$HookModule.$Hook
+         $Action = [ScriptBlock]::Create("
+            if(`$_.Data) {
+               `$global:Channel  = `$_.Data.Channel
+               `$global:Hostname = `$_.Data.Host
+               `$global:Ident    = `$_.Data.Ident
+               `$global:Message  = `$_.Data.Message
+               `$global:Nick     = `$_.Data.Nick
+               `$global:From     = `$_.Data.From
+            }
+
+            PowerBotHooks\$Hook `$this `$_
+
+            Remove-Item Variable:Global:Channel
+            Remove-Item Variable:Global:From
+            Remove-Item Variable:Global:Hostname
+            Remove-Item Variable:Global:Ident
+            Remove-Item Variable:Global:Message
+            Remove-Item Variable:Global:Nick
+            ")
+         Write-Host "Hook On$EventName to $Hook"
+         try {
+            #Requires -version 4.0
+            $irc."Add_On$EventName"( $Action )
+         } catch {
+            Write-Error "Error hooking the On$EventName Event to $Action"
+         }
+      }
+   }
+
+   ByHookOrCrook
+
+   Export-ModuleMember -Function * -Cmdlet * -Alias *
+} -Args ($Irc,$HookModules) | Import-Module -Global
+
 
 #################################################################
 # Commands for owners only (they also get all the commands below)

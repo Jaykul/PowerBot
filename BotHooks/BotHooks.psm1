@@ -4,25 +4,21 @@ param(
 
 $BadWords = @("VBS","Fuck","Cunt")
 $BadWords = '\b' + ($BadWords -join '\b|\b') + '\b'
+
 function Test-Language {
+   [CmdletBinding()]
    param($source, $event)
-   $c = $event.Data.Channel
-   $n = $event.Data.Nick
-   $m = $event.Data.Message
-   if($m -match $BadWords) {
-      $irc.SendMessage("Message", $n, "Hey, watch your language. '$($matches[0])' won't be tolerated in $c" )
+   if($Message -match $BadWords) {
+      $irc.SendMessage("Message", $Nick, "Hey, watch your language. '$($matches[0])' won't be tolerated in $Channel" )
    }
 }   
 
 
-
 function Expand-URL {
+   [CmdletBinding()]
    param($source, $event)
-   $c = $event.Data.Channel
-   $n = $event.Data.Nick
-   $m = $event.Data.Message
-   Write-Host "Resolve-AllUrl $M" -Fore Black -Back White
-   Resolve-AllUrl $m | % { $irc.SendMessage("Message", $c, "<$($n)> $_" ) }
+   Write-Host "Resolve-AllUrl $Message" -Fore Black -Back White
+   Resolve-AllUrl $Message | % { $irc.SendMessage("Message", $Channel, "<$($Nick)> $_" ) }
 }
 
 function Resolve-URL {
@@ -63,3 +59,4 @@ function Resolve-AllUrl {
       }
    }
 }
+
