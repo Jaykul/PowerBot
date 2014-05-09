@@ -9,8 +9,13 @@ if( $ExecutionContext.SessionState.Module.Name -ne "PowerBot" ) {
 
 $OldSettings = $Settings
 
-#################################################################
-# Remove all the old hooks and recreate them
+##########################################################################
+## Remove all the old hooks and recreate them
+##########################################################################
+## Event handlers in powershell have TWO automatic variables: $This and $_
+##   In the case of SmartIrc4Net:
+##   $This  - usually the connection, and such ...
+##   $_     - the IrcEventArgs, which just has a Data member
 $script:irc = PowerBot\Get-PowerBotIrcClient
 
 Write-Host $($($irc | ft UserName, NickName, Address, IsConnected -auto | Out-String -Stream) -Join "`n") -Fore Green
@@ -18,26 +23,23 @@ Write-Host $($($irc | ft UserName, NickName, Address, IsConnected -auto | Out-St
 $NewSettings = Import-LocalizedData -BaseDirectory $ExecutionContext.SessionState.Module.ModuleBase -FileName $ExecutionContext.SessionState.Module.Name
 $NewSettings = $NewSettings.PrivateData
 
-[Hashtable[]]$CommandModules = $NewSettings.CommandModules
-[Hashtable[]]$AdminModules   = $NewSettings.AdminModules
-[Hashtable[]]$OwnerModules   = $NewSettings.OwnerModules
-[Hashtable[]]$HookModules    = $NewSettings.HookModules
+[Hashtable[]]$Hooks    = $NewSettings.Hooks
 
-Remove-Module PowerBotHooks, PowerBotCommands, PowerBotOwnerCommands, PowerBotAdminCommands -ErrorAction SilentlyContinue
+Remove-Module PowerBotHooks -ErrorAction SilentlyContinue
 
 New-Module PowerBotHooks {
-   param($Irc, $HookModules)
-   foreach($module in $HookModules.Keys) {
+   param($Irc, $Hooks)
+   foreach($module in $Hooks.Keys) {
       Write-Host "Importing" $module "for" $ExecutionContext.SessionState.Module.Name
       Import-Module $module -Force -Passthru -Args $Irc
    }
 
    function ByHookOrCrook { 
       $MyInvocation.MyCommand.Module.OnRemove = { 
-         foreach($HookModule in $HookModules.Keys) {
-            foreach($Hook in $HookModules.$HookModule.Keys) {
+         foreach($HookModule in $Hooks.Keys) {
+            foreach($Hook in $Hooks.$HookModule.Keys) {
                $ModuleName = @($HookModule -split "\\")[-1]
-               $EventName = $HookModules.$HookModule.$Hook
+               $EventName = $Hooks.$HookModule.$Hook
                #$Action = [ScriptBlock]::Create("{$ModuleName\$Hook}")
                $Action = [ScriptBlock]::Create("{Write-Host `"${Hook}: `$_`"; $ModuleName\$Hook}")
 
@@ -54,10 +56,10 @@ New-Module PowerBotHooks {
       Remove-Item Function:ByHookOrCrook
    }
 
-   foreach($HookModule in $HookModules.Keys) {
-      foreach($Hook in $HookModules.$HookModule.Keys) {
+   foreach($HookModule in $Hooks.Keys) {
+      foreach($Hook in $Hooks.$HookModule.Keys) {
          $ModuleName = @($HookModule -split "\\")[-1]
-         $EventName = $HookModules.$HookModule.$Hook
+         $EventName = $Hooks.$HookModule.$Hook
          $Action = [ScriptBlock]::Create("
             if(`$_.Data) {
                `$global:Channel  = `$_.Data.Channel
@@ -90,154 +92,135 @@ New-Module PowerBotHooks {
    ByHookOrCrook
 
    Export-ModuleMember -Function * -Cmdlet * -Alias *
-} -Args ($Irc,$HookModules) | Import-Module -Global
+} -Args ($Irc,$Hooks) | Import-Module -Global
 
+##########################################################################
+## Command Modules, one per role
+$global:PowerBotUserRoles = $NewSettings.RolePermissions.Keys
+foreach($Role in $NewSettings.RolePermissions.Keys) {
+   Remove-Module "PowerBot${Role}Commands" -ErrorAction SilentlyContinue
+}
 
-#################################################################
-# Commands for owners only (they also get all the commands below)
-New-Module PowerBotOwnerCommands {
-   param($OwnerModules)
-   foreach($module in $OwnerModules) {
-      Write-Host "Importing" $module.Name "for" $ExecutionContext.SessionState.Module.Name
-      Import-Module @module -Force -Passthru
-   }
+## This is the bit where I go all module-crazy on you....
+## For each role, we generate a new module, and import (nested) the modules and commands assigned to that role
+## Then we import that dynamically generated module to the global scope so it can access the PowerBot module if it needs to
+foreach($Role in $NewSettings.RolePermissions.Keys) {
 
-   $script:irc = PowerBot\Get-PowerBotIrcClient
-
-   function Quit {
-      #.Synopsis
-      #  Joins a channel on the server
-      [CmdletBinding()]
-      param(
-         # The channel to join
-         $message = "As ordered"
-      )
-      
-      $irc.RfcQuit($Message)
-      for($i=0;$i -lt 30;$i++) { $irc.Listen($false) }
-      $irc.Disconnect()
-   }
-
-   function Join {
-      #.Synopsis
-      #  Joins a channel on the server
-      [CmdletBinding()]
-      param(
-         # The channel to join
-         $channel
-      )
-      
-      if($channel) {
-         $irc.RfcJoin( $channel )
-      } else {
-         "You have to specify a channel, duh!"
+   New-Module "PowerBot${Role}Commands" {
+      param($Role, $RoleModules)
+      foreach($module in $RoleModules) {
+         Write-Host "Importing" $module.Name "for" $ExecutionContext.SessionState.Module.Name
+         Import-Module @module -Force -Passthru
       }
-   }
 
-   function Say {
-      #.Synopsis
-      #  Sends a message to the IRC server
-      [CmdletBinding()]
-      param(
-         # Who to send the message to (a channel or nickname)
-         [Parameter()]
-         [String]$To = $(if($Channel){$Channel}else{$From}),
+      # There are a few special commands for Owners and "Everyone" (Users)
+      if($Role -eq "Owner") 
+      {
+         $script:irc = PowerBot\Get-PowerBotIrcClient
 
-         # The message to send
-         [Parameter(Position=1, ValueFromPipeline=$true)]
-         [String]$Message,
+         function Quit {
+            #.Synopsis
+            #  Disconnects the bot from IRC
+            [CmdletBinding()]
+            param(
+               # The channel to join
+               $message = "As ordered"
+            )
+            
+            $irc.RfcQuit($Message)
+            for($i=0;$i -lt 30;$i++) { $irc.Listen($false) }
+            $irc.Disconnect()
+         }
 
-         # How to send the message (as a Message or a Notice)
-         [ValidateSet("Message","Notice")]
-         [String]$Type = "Message"
-      )
-      foreach($M in $Message.Trim().Split("`n")) {
-         $irc.SendMessage($Type, $To, $M.Trim())
+         function Join {
+            #.Synopsis
+            #  Joins a channel on the server
+            [CmdletBinding()]
+            param(
+               # The channel to join
+               $channel
+            )
+            
+            if($channel) {
+               $irc.RfcJoin( $channel )
+            } else {
+               "You have to specify a channel, duh!"
+            }
+         }
+
+         function Say {
+            #.Synopsis
+            #  Sends a message to the IRC server
+            [CmdletBinding()]
+            param(
+               # Who to send the message to (a channel or nickname)
+               [Parameter()]
+               [String]$To = $(if($Channel){$Channel}else{$From}),
+
+               # The message to send
+               [Parameter(Position=1, ValueFromPipeline=$true)]
+               [String]$Message,
+
+               # How to send the message (as a Message or a Notice)
+               [ValidateSet("Message","Notice")]
+               [String]$Type = "Message"
+            )
+            foreach($M in $Message.Trim().Split("`n")) {
+               $irc.SendMessage($Type, $To, $M.Trim())
+            }
+         }
+
+         function Update-Command {
+           [CmdletBinding()]param()
+           &(Get-Module PowerBot) { 
+             . $PowerBotScriptRoot\UpdateCommands.ps1
+           }
+         }         
       }
-   }
+      elseif($Role -eq "User") 
+      {
+         function Get-Alias {
+            #.SYNOPSIS
+            #  Lists the commands available via the bot
+            param(
+               # A filter for the command name (allows wildcards)
+               [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+               [String[]]$Name = "*"
+            )
+            process {
+               Microsoft.PowerShell.Utility\Get-Alias -Definition $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -ErrorAction SilentlyContinue
+            }
+         }
 
-   function Get-OwnerCommand {
-      #.SYNOPSIS
-      #  Lists the commands available via the bot
-      param(
-         # A filter for the command name (allows wildcards)
-         [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-         [String[]]$Name = "*"
-      )
-      process {
-         $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
+
+         function Get-Command {
+            #.SYNOPSIS
+            #  Lists the commands available via the bot
+            param(
+               # A filter for the command name (allows wildcards)
+               [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+               [String[]]$Name = "*"
+            )
+            process {
+               $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
+            }
+         }
       }
-   }
-   Export-ModuleMember -Function * -Cmdlet * -Alias *
-} -Args (,$OwnerModules) | Import-Module -Global
 
-
-#################################################################
-# Commands for admins only (they also get all the commands below)
-New-Module PowerBotAdminCommands {
-   param($AdminModules)
-   foreach($module in $AdminModules) {
-      Write-Host "Importing" $module.Name "for" $ExecutionContext.SessionState.Module.Name
-      Import-Module @module -Force -Passthru
-   }
-
-   $script:irc = PowerBot\Get-PowerBotIrcClient
-
-   function Update-Command {
-     [CmdletBinding()]param()
-     &(Get-Module PowerBot) { 
-       . $PowerBotScriptRoot\UpdateCommands.ps1
-     }
-   }
-
-   function Get-AdminCommand {
-      #.SYNOPSIS
-      #  Lists the commands available via the bot
-      param(
-         # A filter for the command name (allows wildcards)
-         [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-         [String[]]$Name = "*"
-      )
-      process {
-         $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
+      Set-Content "function:Get-${Role}Command" {
+         #.SYNOPSIS
+         #  Lists the commands available via the bot
+         param(
+            # A filter for the command name (allows wildcards)
+            [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+            [String[]]$Name = "*"
+         )
+         process {
+            $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
+         }
       }
-   }
-   Export-ModuleMember -Function * -Cmdlet * -Alias *
-} -Args (,$AdminModules) | Import-Module -Global
 
+      Export-ModuleMember -Function * -Cmdlet * -Alias *
+   } -Args ($Role,$NewSettings.RolePermissions.$Role) | Import-Module -Global
 
-
-#################################################################
-# Commands for everyone!
-New-Module PowerBotCommands {
-   param($CommandModules)
-   foreach($module in $CommandModules) {
-      Write-Host "Importing" $module.Name "for" $ExecutionContext.SessionState.Module.Name
-      Import-Module @module -Force -Passthru
-   }
-   function Get-Alias {
-      #.SYNOPSIS
-      #  Lists the commands available via the bot
-      param(
-         # A filter for the command name (allows wildcards)
-         [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-         [String[]]$Name = "*"
-      )
-      process {
-         Microsoft.PowerShell.Utility\Get-Alias -Definition $ExecutionContext.SessionState.Module.ExportedCommands.Values.Name -ErrorAction SilentlyContinue
-      }
-   }
-   function Get-Command {
-      #.SYNOPSIS
-      #  Lists the commands available via the bot
-      param(
-         # A filter for the command name (allows wildcards)
-         [Parameter(Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-         [String[]]$Name = "*"
-      )
-      process {
-         $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
-      }
-   }
-   Export-ModuleMember -Function * -Cmdlet * -Alias *
-} -Args (,$CommandModules) | Import-Module -Global
+}

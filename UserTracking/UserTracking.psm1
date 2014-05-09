@@ -10,7 +10,7 @@ $Services = "services."
 # NOTE: PowerBot will create a "data:" drive if the "SQLitePSProvider" module is present.
 # So all we have to worry about is whether 
 if(!(Test-Path data:\Users)) {
-   New-Item data:\Users -Value @{ Account="TEXT UNIQUE NOT NULL"; Nick="TEXT NOT NULL"; LastMask="TEXT NOT NULL"; Role="TEXT"; }
+   New-Item data:\Users -Value @{ Account="TEXT UNIQUE NOT NULL"; Nick="TEXT NOT NULL"; LastMask="TEXT NOT NULL"; AcceptableMask="Text"; Roles="TEXT"; }
 }
 
 function Sync-Join {
@@ -80,3 +80,46 @@ function Update-NickservInfo {
    }
 }
 
+function Get-PowerBotUser {
+   param(
+      [Parameter(Position=0)]
+      [Alias("From")]
+      $HostMask
+   )
+   if($HostMask){ $Nick, $Mask = $HostMask.Split('!', 2) }
+   elseif($From) { $Nick, $Mask = $From.Split('!', 2) }
+
+   Get-Item -Path data:\Users -filter "Nick = '${Nick}' AND LastMask = '${Mask}'" | Select Account, Nick, LastMask, AcceptableMask, Roles
+}
+
+function Get-PowerBotRole {
+   param(
+      [Parameter(Position=0)]
+      [Alias("From")]
+      $HostMask
+   )
+   if($HostMask){ $Nick, $Mask = $HostMask.Split('!', 2) }
+   elseif($From) { $Nick, $Mask = $From.Split('!', 2) }
+
+
+   if($Roles = (Get-Item -Path data:\Users -filter "Nick = '${Nick}' AND LastMask = '${Mask}'").Roles -split "\s+") {
+      @($Roles)
+   } else { @("User") }
+
+}
+
+function Set-PowerBotRole {
+   param(
+      [Parameter(Position=0, Mandatory=$true)]
+      [String]$Account,
+
+      [Parameter(Position=1, Mandatory=$true)]
+      [ValidateScript({if($PowerBotUserRoles -contains $_){ $True } else { throw "$_ is not a valid Role. Please use one of: $PowerBotUserRoles"}})]
+      [String[]]$Role
+   )
+   Set-Item data:\Users -Filter "account = '$Account'" -Value @{Roles = $Role -join ' '}
+}
+
+
+Set-Alias Get-Role Get-PowerBotRole
+Set-Alias Roles Get-PowerBotRole

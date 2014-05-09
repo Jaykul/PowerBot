@@ -9,24 +9,39 @@
 ## You need to configure the PrivateData in the PowerBot.psd1 file
 ############################################################################################
 
-## Force some default ParametersValues
+## Set some default ParametersValues for inside PowerBot
 $PSDefaultParameterValues."Out-String:Stream" = $true
 $PSDefaultParameterValues."Format-Table:Auto" = $true
 
-$PowerBotScriptRoot = Get-Variable PSScriptRoot -ErrorAction SilentlyContinue | ForEach-Object { $_.Value }
-if(!$PowerBotScriptRoot) {
-  $PowerBotScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
+## Store the PSScriptRoot
+$global:PowerBotScriptRoot = Get-Variable PSScriptRoot -ErrorAction SilentlyContinue | ForEach-Object { $_.Value }
+if(!$global:PowerBotScriptRoot) {
+  $global:PowerBotScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
 }
 
+## If Jim Christopher's SQLite module is available, we'll use it
 if((Get-Command Mount-SQLite) -and -not (Test-Path data:)) {
+   # TODO: We should store the BotDataFile in the ProgramData folder
    $BotDataFile = (Join-Path $PowerBotScriptRoot "botdata.sqlite")
-   Write-Host "Bot Data: $BotDataFile"
+
+   Write-Warning "First run, creating bot data file: $BotDataFile"
    Mount-SQLite -Name data -DataSource $BotDataFile
 }
 
-$PSDefaultParameterValues
-
 function Get-PowerBotIrcClient { $script:irc }
+
+function Get-Setting {
+   param(
+      # The setting name to retrieve
+      [Parameter(Position=0, Mandatory=$true)]
+      $Name
+   )
+   $PrivateData = $MyInvocation.MyCommand.Module.PrivateData
+   foreach($Level in $Name -split '\.') {
+      $PrivateData = $PrivateData.$Level
+   }
+   return $PrivateData
+}
 
 function Send-Message {
    #.Synopsis
@@ -69,7 +84,14 @@ function Start-PowerBot {
       # The nickname to use (usually you should provide an alternate)
       # NOTE, the FIRST nick should be associated with the password, if any
       [Parameter(Position=0)]
-      [string[]]$Nick        = $(Get-Setting Nick),
+      [string[]]$Nick        = $(
+         $Default = Get-Setting Nick
+         if($Default.Length -gt 0 -and $Default[0].Length -gt 0) {
+            $Default
+         } else { 
+            "PowerBot{0:D4}" -f (Get-Random -Maximum 9999) 
+            "PowerBot{0:D4}" -f (Get-Random -Maximum 9999) 
+         }),
 
       # The IRC channel(s) to connect to
       [string[]]$Channels    = $(Get-Setting Channels),
@@ -84,7 +106,12 @@ function Start-PowerBot {
       [int]$Port             = $(Get-Setting Port),
    
       # The "real name" to be returned to queries from the IRC server
-      [string]$RealName      = $(Get-Setting RealName),
+      [string]$RealName      = $(
+         if($Default = Get-Setting RealName) { 
+            $Default 
+         } else {
+            "PowerBot http://github.org/Jaykul/PowerBot"
+         }),
    
       # The proxy server
       [string]$ProxyServer   = $(Get-Setting ProxyServer),
@@ -99,29 +126,24 @@ function Start-PowerBot {
       [string]$ProxyPassword = $(Get-Setting ProxyPassword),
 
       # Recreate the IRC client even if it already exists
-      [switch]$Force,
-
-      # The bot owner(s) have access to all commands
-      [String[]]$Owner = $(Get-Setting Owner),
-      # The bot admin(s) have access to admin and regular commands
-      [String[]]$Admin = $(Get-Setting Admin),
-
-      [Hashtable[]]$CommandModules = $(Get-Setting CommandModules),
-      [Hashtable[]]$AdminModules = $(Get-Setting AdminModules),
-      [Hashtable[]]$OwnerModules = $(Get-Setting OwnerModules)
+      [switch]$Force
    )
 
-   if($Nick.Length -lt 1 -or $Nick[0].Length -lt 1) {
-      throw "At least one nickname is required. Please pass -Nick or set it in PrivateData"
-   }
-   if(!$realname) {
-      $realname = "PowerBot http://github.org/Jaykul/PowerBot"
-   }   
+   # The bot owner(s) have access to all commands
+   [String[]]$Owner             = $(Get-Setting Owner)
+   # The bot admin(s) have access to admin and regular commands
+   [String[]]$Admin             = $(Get-Setting Admin)
+
+   [Hashtable[]]$CommandModules = $(Get-Setting CommandModules)
+   [Hashtable[]]$AdminModules   = $(Get-Setting AdminModules)
+   [Hashtable[]]$OwnerModules   = $(Get-Setting OwnerModules)
+
+   $script:Password = $Password
 
    if($Force -or !(Test-Path -Path Variable:Script:Irc)) {
       $script:irc = New-Object Meebey.SmartIrc4net.IrcClient
       
-      # TODO: Expose these options to the psd1
+      # TODO: Expose these options to configuration
       $script:irc.AutoRejoin = $true
       $script:irc.AutoRejoinOnKick = $false
       $script:irc.AutoRelogin = $true
@@ -140,6 +162,7 @@ function Start-PowerBot {
          $script:irc.ProxyPassword = $ProxyPassword
       }
 
+      # There are a few things I need to store for command modules
       Add-Member -Input $irc NoteProperty BotOwner $Owner
       Add-Member -Input $irc NoteProperty BotAdmin $Admin
       Add-Member -Input $irc NoteProperty CommandModules $CommandModules
@@ -147,42 +170,16 @@ function Start-PowerBot {
       Add-Member -Input $irc NoteProperty OwnerModules $OwnerModules
       Add-Member -Input $irc NoteProperty BotChannels $Channels
 
-      # This should show errors 
+      # This causes errors to show up in the console
       $script:irc.Add_OnError( {Write-Error $_.ErrorMessage} )
-      # And give us the option of seeing the raw output in verbose
+      # This give us the option of seeing every line as verbose output
       $script:irc.Add_OnReadLine( {Write-Verbose $_.Line} )
       
-      ## Hook up event handlers for messages we handle
-      ##########################################################################
-      ## Event handlers in powershell have TWO automatic variables: $This and $_
-      ##   In the case of SmartIrc4Net:
-      ##   $This  - usually the connection, and such ...
-      ##   $_     - the IrcEventArgs, which just has a Data member
 
       ## UserModeChange (this happens, among other things, when we first go online)
-      $script:irc.Add_OnUserModeChange( {
-         # We only need to go through this the first time we see this message:
-         if(!$irc.Who) {
-            $Nick = $This.NicknameList[0]
+      $script:irc.Add_OnUserModeChange( {OnUserModeChange_TrackOurselves} )
 
-            if($Password) {
-               # Manual login to nickserv:
-               Send-Message -To "Nickserv" -Message "IDENTIFY $Nick $($This.Password)"
-               # TODO: The "REGAIN" command may only work on freenode
-               if($This.Nickname -ne $Nick) {
-                  Send-Message -To "Nickserv" -Message "REGAIN $Nick $($This.Password)"
-               }
-            }
-
-            # Trigger WHO so we can figure out our own hostmask etc.
-            $irc.RfcWho($Nick)
-         }        
-      } )
-
-      ## Who sends us the information about who we are, and gives us a chance to (re)join channels
-      $script:irc.Add_OnWho({OnWho_UserData})
-
-      # We hook our command syntax natively
+      # We handle commands on query (private) messages or on channel messages
       $script:irc.Add_OnQueryMessage( {OnQueryMessage_ProcessCommands} )
       $script:irc.Add_OnChannelMessage( {OnChannelMessage_ProcessCommands} )
    }
@@ -198,16 +195,6 @@ function Start-PowerBot {
    Resume-PowerBot # Shortcut so starting this thing up only takes one command
 }
 
-function OnWho_UserData {
-   # The first time we see this a WHO, it is about us, so...
-   if(!$irc.Who) {
-      Add-Member -Input $irc NoteProperty Who (Select-Object Host, Ident, Nick, Realname, @{n="Mask";e={$_.Nick +"!"+ $_.Ident +"@"+ $_.Host}} -Input $_)
-
-      if(!$irc.JoinedChannels) {
-         foreach($chan in $irc.BotChannels) { $irc.RfcJoin( $chan ) }
-      }
-   }
-} 
 ## Note that PowerBot stops listening if you press Q ...
 ## You have to run Resume-Powerbot to get him to listen again
 ## That's the safe way to reload all the PowerBot commands
@@ -268,23 +255,65 @@ function Test-Command {
 
 }
 
+function OnUserModeChange_TrackOurselves {
+   #.Synopsis
+   #  Handles the UserModeChange event to deal with authentication and joining channels
+
+   # ${This} is the $irc object
+   $Nick = $This.NicknameList[0]
+
+   # If we know a password 
+   if($This.Password) {
+      # Manual login to nickserv:
+      Send-Message -To "Nickserv" -Message "IDENTIFY $Nick $($This.Password)"
+      # TODO: The "REGAIN" command may only work on freenode
+      if($This.Nickname -ne $Nick) {
+         Send-Message -To "Nickserv" -Message "REGAIN $Nick $($This.Password)"
+      }
+   }
+
+   # Remove our hook. We don't need to track this anymore
+   $irc.Remove_OnUserModeChange( {OnUserModeChange_TrackOurselves} )
+
+   ## We use Who basically as a delay/callback so we don't try to join channels too soon...
+   function Script:OnWho_JoinChannels {
+      ## Who sends us the information about who we are, and gives us a chance to (re)join channels
+      Add-Member -Input $script:irc NoteProperty Who (Select-Object Host, Ident, Nick, Realname, @{n="Mask";e={$_.Nick +"!"+ $_.Ident +"@"+ $_.Host}} -Input $_)
+
+      # Remove our hook. We don't need to track this anymore
+      $irc.Remove_OnWho( {OnWho_JoinChannels} )
+
+      if(!$script:irc.JoinedChannels) {
+         foreach($chan in $script:irc.BotChannels) { $script:irc.RfcJoin( $chan ) }
+      }
+   }
+
+   $irc.Add_OnWho({OnWho_JoinChannels})
+
+   # Trigger WHO so we can figure out our own hostmask etc.
+   $irc.RfcWho($Nick)
+}
+
 function OnQueryMessage_ProcessCommands { 
-   Process-Message -Data $_.Data -Sender $_.Data.Nick
+   # If it's not prefixed, then we don't process it, because it's not a command
+   if($_.Data.Message[0] -eq $Prefix -and $_.Data.Message.Length -gt 1) { 
+      Process-Message -Data $_.Data -Sender $_.Data.Nick
+   }
 }
 
 function OnChannelMessage_ProcessCommands {
-   Process-Message -Data $_.Data -Sender $_.Data.Channel
+   # If it's not prefixed, then we don't process it, because it's not a command
+   if($_.Data.Message[0] -eq $Prefix -and $_.Data.Message.Length -gt 1) { 
+      Process-Message -Data $_.Data -Sender $_.Data.Channel
+   }
 }
+
+$Prefix = Get-Setting CommandPrefix
 
 function Process-Message {
    param($Data, $Sender)
    Write-Verbose ("Message: " + $Data.Message)
-
-   $Prefix = Get-Setting CommandPrefix
-
-   # If it's not prefixed, then we don't process it here, because it's not a command
-   if($Data.Message[0] -ne $Prefix -or $Data.Message.Length -eq 1) { return }
-   
+  
    $ScriptString = $Data.Message.SubString(1)
    $global:Channel  = $Data.Channel
    $global:From     = $Data.From
@@ -292,17 +321,21 @@ function Process-Message {
    $global:Ident    = $Data.Ident
    $global:Message  = $Data.Message
    $global:Nick     = $Data.Nick
-   
-   $AllowedModule = @("PowerBotCommands")
-   if(($irc.BotOwner | %{ $From -like $_ }) -Contains $True) {
-      $AllowedModule += "OwnerCommands", "PowerBotOwnerCommands", "PowerBotAdminCommands"
-   } 
-   elseif(($irc.BotAdmin | %{ $From -like $_ }) -Contains $True) {
-      $AllowedModule += "OwnerCommands", "PowerBotAdminCommands"
-   }
-   
-   
-   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule PowerBotCommands -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
+
+
+   # Figure out which modules the user is allowed to use.
+   # Everyone is allowed the "User" role
+   $AllowedModule = @("PowerBotUserCommands") + @(
+      # If there's a PowerBotUserRoles module, they may get other roles ...
+      if(Get-Command Get-PowerBotRole) {
+         foreach($Role in Get-PowerBotRole -From $From) {
+            "PowerBot${Role}Commands"
+         }
+      }
+   ) | Select-Object -Unique
+
+   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule ''$($AllowedModule -join '','')'' -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
+
    $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
    if(!$Script) {
       if($Warnings) {
@@ -312,39 +345,6 @@ function Process-Message {
       return
    }
    
-   
-   #IRC max length is 512, minus the CR LF and other headers ... 
-   # In practice, it looks like this:
-   # :Nick!Ident@Host PRIVMSG #Powershell :Your Message Here
-   ###### The part that never changes is the 512-2 (for the \r\n) 
-   ###### And the "PRIVMSG" and extra spaces and colons
-   # So that inflexible part of the header is:
-   #     1 = ":".Length
-   #     9 = " PRIVMSG ".Length 
-   #     2 = " :".Length
-   # So therefore our hard-coded magic number is:
-   #     498 = 510 - 12
-   # (I take an extra one off for good luck: 510 - 13)
-   
-   # In a real world example with my host and "Shelly" as the nick:
-     # Host     : geoshell/dev/Jaykul
-     # Ident    : ~Shelly
-     # Nick     : Shelly
-   # We calculate the mask in our OnWho:
-     # Mask     : Shelly!~Shelly@geoshell/dev/Jaykul
-   
-   # So if the "$Sender" is "#PowerShell" our header is:
-   #     57 = ":Shelly!~Shelly@geoshell/dev/Jaykul PRIVMSG #Powershell :".Length
-     # As we said before/, 12 is constant
-     #     12 = ":" + " PRIVMSG " + " :"
-     # And our Who.Mask ends up as:
-     #     34 = "Shelly!~Shelly@geoshell/dev/Jaykul".Length 
-     # And our Sender.Length is:
-     #     11 = "#Powershell".Length
-     # The resulting MaxLength would be 
-     #    452 = 497 - 11 - 34
-     # Which is one less than the real MaxLength:
-     #    453 = 512 - 2 - 57 
    
    $local:MaxLength = 497 - $Sender.Length - $irc.Who.Mask.Length 
    if($Script) {
@@ -368,20 +368,6 @@ function Process-Message {
    Remove-Item Variable:Global:Nick
 }
 
-function Get-Setting {
-   param(
-      # The setting name to retrieve
-      [Parameter(Position=0, Mandatory=$true)]
-      $Name
-   )
-   $PrivateData = $MyInvocation.MyCommand.Module.PrivateData
-   foreach($Level in $Name -split '\.') {
-      $PrivateData = $PrivateData.$Level
-   }
-   return $PrivateData
-}
-
-
 
 Add-Type @"
 using System;
@@ -395,3 +381,39 @@ public class PowerBotHookAttribute : Attribute
    public string Event { get; set; }
 }
 "@
+
+
+# A NOTE ABOUT MESSAGE LENGTH:
+   
+   #IRC max length is 512, minus the CR LF and other headers ... 
+   # In practice, it looks like this:
+   # :Nick!Ident@Host PRIVMSG #Powershell :Your Message Here
+   ###### The part that never changes is the 512-2 (for the \r\n) 
+   ###### And the "PRIVMSG" and extra spaces and colons
+   # So that inflexible part of the header is:
+   #     1 = ":".Length
+   #     9 = " PRIVMSG ".Length 
+   #     2 = " :".Length
+   # So therefore our hard-coded magic number is:
+   #     498 = 510 - 12
+   # (I take an extra one off for good luck: 510 - 13)
+   
+   # In a real world example with my host mask and "Shelly" as the nick and user id:
+     # Host     : geoshell/dev/Jaykul
+     # Ident    : ~Shelly
+     # Nick     : Shelly
+   # We calculate the mask in our OnWho:
+     # Mask     : Shelly!~Shelly@geoshell/dev/Jaykul
+   
+   # So if the "$Sender" is "#PowerShell" our header is:
+   #     57 = ":Shelly!~Shelly@geoshell/dev/Jaykul PRIVMSG #Powershell :".Length
+     # As we said before/, 12 is constant
+     #     12 = ":" + " PRIVMSG " + " :"
+     # And our Who.Mask ends up as:
+     #     34 = "Shelly!~Shelly@geoshell/dev/Jaykul".Length 
+     # And our Sender.Length is:
+     #     11 = "#Powershell".Length
+     # The resulting MaxLength would be 
+     #    452 = 497 - 11 - 34
+     # Which is one less than the real MaxLength:
+     #    453 = 512 - 2 - 57 

@@ -56,7 +56,7 @@ RequiredAssemblies = '.\bin\Meebey.SmartIrc4net.dll' # Meebey.SmartIrc4net, Vers
 
 # Module specific private data can be passed via this member.
 PrivateData = @{
-   Nick = @('PowerBot')
+   # Nick = @('PowerBot')
    # RealName = ''
    # Password = ''
    Server = "chat.freenode.net"
@@ -67,7 +67,7 @@ PrivateData = @{
 
    Owner = "Jaykul!jaykul@geoshell/dev/Jaykul"
    
-   HookModules = @{
+   Hooks = @{
       "PowerBot\BotHooks" = @{
          "Expand-Url" = "ChannelMessage"
          "Test-Language" = "ChannelMessage"
@@ -77,18 +77,26 @@ PrivateData = @{
          "Update-NickservInfo" = "QueryNotice"
       }
    }
-   CommandModules = @(
-      @{Name="Bing"}, 
-      @{Name="FAQ"},
-      @{Name="Math"},
-      @{Name="WebQueries"},
-      @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"},
-      @{Name="PowerBot\BotCommands"},
-      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
-   )
-   AdminModules = @(
-      @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "New-Alias"}
-   )
+
+   RolePermissions = @{
+      Owner    = @(
+         @{Name="PowerBot\UserTracking"; Function = "Set-PowerBotRole"}
+      )
+      Admin    = @(
+         @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "New-Alias"} 
+      )
+      Operator = @()
+      User     = @(
+         @{Name="Bing"}, 
+         @{Name="FAQ"},
+         @{Name="Math"},
+         @{Name="WebQueries"},
+         @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"},
+         @{Name="PowerBot\BotCommands"},
+         @{Name="PowerBot\UserTracking"; Function = "Get-PowerBotRole"; Alias = "Get-Role", "Roles"}
+         @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
+      )
+   }
    
    #  ProxyServer = "www.mc.xerox.com"
    #  ProxyPort = "8000"
