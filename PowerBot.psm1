@@ -20,17 +20,18 @@ if(!$global:PowerBotScriptRoot) {
 }
 
 ## If Jim Christopher's SQLite module is available, we'll use it
+Import-Module SQLitePSProvider -ErrorAction SilentlyContinue
 if((Get-Command Mount-SQLite) -and -not (Test-Path data:)) {
    # TODO: We should store the BotDataFile in the ProgramData folder
    $BotDataFile = (Join-Path $PowerBotScriptRoot "botdata.sqlite")
-
-   Write-Warning "First run, creating bot data file: $BotDataFile"
    Mount-SQLite -Name data -DataSource $BotDataFile
 }
 
 function Get-PowerBotIrcClient { $script:irc }
 
 function Get-Setting {
+   #.Synopsis
+   #  Read a Setting off the PrivateData
    param(
       # The setting name to retrieve
       [Parameter(Position=0, Mandatory=$true)]
@@ -131,12 +132,7 @@ function Start-PowerBot {
 
    # The bot owner(s) have access to all commands
    [String[]]$Owner             = $(Get-Setting Owner)
-   # The bot admin(s) have access to admin and regular commands
-   [String[]]$Admin             = $(Get-Setting Admin)
 
-   [Hashtable[]]$CommandModules = $(Get-Setting CommandModules)
-   [Hashtable[]]$AdminModules   = $(Get-Setting AdminModules)
-   [Hashtable[]]$OwnerModules   = $(Get-Setting OwnerModules)
 
    $script:Password = $Password
 
@@ -164,11 +160,8 @@ function Start-PowerBot {
 
       # There are a few things I need to store for command modules
       Add-Member -Input $irc NoteProperty BotOwner $Owner
-      Add-Member -Input $irc NoteProperty BotAdmin $Admin
-      Add-Member -Input $irc NoteProperty CommandModules $CommandModules
-      Add-Member -Input $irc NoteProperty AdminModules $AdminModules
-      Add-Member -Input $irc NoteProperty OwnerModules $OwnerModules
       Add-Member -Input $irc NoteProperty BotChannels $Channels
+      Add-Member -Input $irc NoteProperty EventHooks @{}
 
       # This causes errors to show up in the console
       $script:irc.Add_OnError( {Write-Error $_.ErrorMessage} )
@@ -218,7 +211,7 @@ function Resume-PowerBot {
 }
 
 function Update-CommandModule {
-   . $PowerBotScriptRoot\UpdateCommands.ps1
+   . $PowerBotScriptRoot\UpdateCommands.ps1 -Force
 }
 
 function Stop-PowerBot {
@@ -275,23 +268,7 @@ function OnUserModeChange_TrackOurselves {
    # Remove our hook. We don't need to track this anymore
    $irc.Remove_OnUserModeChange( {OnUserModeChange_TrackOurselves} )
 
-   ## We use Who basically as a delay/callback so we don't try to join channels too soon...
-   function Script:OnWho_JoinChannels {
-      ## Who sends us the information about who we are, and gives us a chance to (re)join channels
-      Add-Member -Input $script:irc NoteProperty Who (Select-Object Host, Ident, Nick, Realname, @{n="Mask";e={$_.Nick +"!"+ $_.Ident +"@"+ $_.Host}} -Input $_)
-
-      # Remove our hook. We don't need to track this anymore
-      $irc.Remove_OnWho( {OnWho_JoinChannels} )
-
-      if(!$script:irc.JoinedChannels) {
-         foreach($chan in $script:irc.BotChannels) { $script:irc.RfcJoin( $chan ) }
-      }
-   }
-
-   $irc.Add_OnWho({OnWho_JoinChannels})
-
-   # Trigger WHO so we can figure out our own hostmask etc.
-   $irc.RfcWho($Nick)
+   foreach($chan in $irc.BotChannels) { $irc.RfcJoin( $chan ) }
 }
 
 function OnQueryMessage_ProcessCommands { 
@@ -331,6 +308,9 @@ function Process-Message {
          foreach($Role in Get-PowerBotRole -From $From) {
             "PowerBot${Role}Commands"
          }
+      }
+      if($From -eq $irc.BotOwner) {
+         "PowerBotOwnerCommands"
       }
    ) | Select-Object -Unique
 

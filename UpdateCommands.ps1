@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-   [Hashtable[]]$Settings = $ExecutionContext.SessionState.Module.PrivateData
+   [Hashtable[]]$Settings = $ExecutionContext.SessionState.Module.PrivateData,
+   [Switch]$Force
 )
 
 if( $ExecutionContext.SessionState.Module.Name -ne "PowerBot" ) {
@@ -28,21 +29,12 @@ $NewSettings = $NewSettings.PrivateData
 Remove-Module PowerBotHooks -ErrorAction SilentlyContinue
 
 New-Module PowerBotHooks {
-   param($Irc, $Hooks)
-   foreach($module in $Hooks.Keys) {
-      Write-Host "Importing" $module "for" $ExecutionContext.SessionState.Module.Name
-      Import-Module $module -Force -Passthru -Args $Irc
-   }
+   param($Irc, $Hooks, $Force)
 
    function ByHookOrCrook { 
       $MyInvocation.MyCommand.Module.OnRemove = { 
-         foreach($HookModule in $Hooks.Keys) {
-            foreach($Hook in $Hooks.$HookModule.Keys) {
-               $ModuleName = @($HookModule -split "\\")[-1]
-               $EventName = $Hooks.$HookModule.$Hook
-               #$Action = [ScriptBlock]::Create("{$ModuleName\$Hook}")
-               $Action = [ScriptBlock]::Create("{Write-Host `"${Hook}: `$_`"; $ModuleName\$Hook}")
-
+         foreach($EventName in $irc.EventHooks.Keys) {
+            foreach($Action in $irc.EventHooks.$EventName) {
                Write-Host "UnHook On$EventName to $Action"
                try {
                   #Requires -version 4.0
@@ -57,42 +49,50 @@ New-Module PowerBotHooks {
    }
 
    foreach($HookModule in $Hooks.Keys) {
-      foreach($Hook in $Hooks.$HookModule.Keys) {
-         $ModuleName = @($HookModule -split "\\")[-1]
-         $EventName = $Hooks.$HookModule.$Hook
-         $Action = [ScriptBlock]::Create("
-            if(`$_.Data) {
-               `$global:Channel  = `$_.Data.Channel
-               `$global:Hostname = `$_.Data.Host
-               `$global:Ident    = `$_.Data.Ident
-               `$global:Message  = `$_.Data.Message
-               `$global:Nick     = `$_.Data.Nick
-               `$global:From     = `$_.Data.From
+      Write-Host "Importing" $HookModule "for" $ExecutionContext.SessionState.Module.Name
+      try {
+         Import-Module $HookModule -Force:$Force -Passthru -Args $Irc -ErrorAction Stop
+
+         foreach($Hook in $Hooks.$HookModule.Keys) {
+            $ModuleName = @($HookModule -split "\\")[-1]
+            $EventName = $Hooks.$HookModule.$Hook
+            $Action = [ScriptBlock]::Create("
+               if(`$_.Data) {
+                  `$global:Channel  = `$_.Data.Channel
+                  `$global:Hostname = `$_.Data.Host
+                  `$global:Ident    = `$_.Data.Ident
+                  `$global:Message  = `$_.Data.Message
+                  `$global:Nick     = `$_.Data.Nick
+                  `$global:From     = `$_.Data.From
+               }
+
+               PowerBotHooks\$Hook `$this `$_
+
+               Remove-Item Variable:Global:Channel
+               Remove-Item Variable:Global:From
+               Remove-Item Variable:Global:Hostname
+               Remove-Item Variable:Global:Ident
+               Remove-Item Variable:Global:Message
+               Remove-Item Variable:Global:Nick
+               ")
+            Write-Host "Hook On$EventName to $Hook"
+            try {
+               #Requires -version 4.0
+               $irc."Add_On$EventName"( $Action )
+               $irc.EventHooks.$EventName += @( $Action )
+            } catch {
+               Write-Error "Error hooking the On$EventName Event to $Action"
             }
-
-            PowerBotHooks\$Hook `$this `$_
-
-            Remove-Item Variable:Global:Channel
-            Remove-Item Variable:Global:From
-            Remove-Item Variable:Global:Hostname
-            Remove-Item Variable:Global:Ident
-            Remove-Item Variable:Global:Message
-            Remove-Item Variable:Global:Nick
-            ")
-         Write-Host "Hook On$EventName to $Hook"
-         try {
-            #Requires -version 4.0
-            $irc."Add_On$EventName"( $Action )
-         } catch {
-            Write-Error "Error hooking the On$EventName Event to $Action"
          }
+      } catch {
+         Write-Warning "Failed to import $HookModule $_"
       }
    }
 
    ByHookOrCrook
 
    Export-ModuleMember -Function * -Cmdlet * -Alias *
-} -Args ($Irc,$Hooks) | Import-Module -Global
+} -Args ($Irc, $Hooks, [Bool]$Force) | Import-Module -Global
 
 ##########################################################################
 ## Command Modules, one per role
@@ -105,12 +105,13 @@ foreach($Role in $NewSettings.RolePermissions.Keys) {
 ## For each role, we generate a new module, and import (nested) the modules and commands assigned to that role
 ## Then we import that dynamically generated module to the global scope so it can access the PowerBot module if it needs to
 foreach($Role in $NewSettings.RolePermissions.Keys) {
-
    New-Module "PowerBot${Role}Commands" {
-      param($Role, $RoleModules)
+      param($Role, $RoleModules, $Force)
       foreach($module in $RoleModules) {
          Write-Host "Importing" $module.Name "for" $ExecutionContext.SessionState.Module.Name
-         Import-Module @module -Force -Passthru
+         try {
+            Import-Module @module -Force:$Force -Passthru -ErrorAction Stop
+         } catch { Write-Warning "Failed to import $($Module.Name) $_" }
       }
 
       # There are a few special commands for Owners and "Everyone" (Users)
@@ -171,9 +172,9 @@ foreach($Role in $NewSettings.RolePermissions.Keys) {
          }
 
          function Update-Command {
-           [CmdletBinding()]param()
+           [CmdletBinding()]param([Switch]$Force)
            &(Get-Module PowerBot) { 
-             . $PowerBotScriptRoot\UpdateCommands.ps1
+             . $PowerBotScriptRoot\UpdateCommands.ps1 -Force:$Force
            }
          }         
       }
@@ -221,6 +222,6 @@ foreach($Role in $NewSettings.RolePermissions.Keys) {
       }
 
       Export-ModuleMember -Function * -Cmdlet * -Alias *
-   } -Args ($Role,$NewSettings.RolePermissions.$Role) | Import-Module -Global
+   } -Args ($Role,$NewSettings.RolePermissions.$Role,$Force) | Import-Module -Global
 
 }

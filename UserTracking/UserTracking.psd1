@@ -66,7 +66,7 @@ Description = 'UserTracking for PowerBot'
 # NestedModules = @()
 
 # Functions to export from this module
-FunctionsToExport = 'Sync-Join', 'Update-NickservInfo','Get-PowerBotUser','Get-PowerBotRole'
+FunctionsToExport = 'Sync-Join', 'Sync-Who', 'Sync-Nick', 'Update-NickservInfo', 'Get-PowerBotUser', 'Get-PowerBotRole'
 
 # Cmdlets to export from this module
 CmdletsToExport = @()

@@ -40,7 +40,7 @@ FunctionsToExport = 'Start-PowerBot', 'Resume-PowerBot', 'Stop-PowerBot', 'Get-P
 #CmdletsToExport = ''
 
 # This is a list of other modules that must be loaded before this module.
-RequiredModules = @('ResolveAlias', 'Strings', 'Bing', 'FAQ', 'Math', 'WebQueries')
+RequiredModules = @('ResolveAlias')
 
 # The script files (.ps1) that are loaded before this module.
 ScriptsToProcess = @()
@@ -74,6 +74,8 @@ PrivateData = @{
       }
       "PowerBot\UserTracking" = @{
          "Sync-Join" = "Join"
+         "Sync-Who" = "Who"
+         "Sync-Nick" = "NickChange"
          "Update-NickservInfo" = "QueryNotice"
       }
    }
@@ -87,12 +89,7 @@ PrivateData = @{
       )
       Operator = @()
       User     = @(
-         @{Name="Bing"}, 
-         @{Name="FAQ"},
-         @{Name="Math"},
-         @{Name="WebQueries"},
-         @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"},
-         @{Name="PowerBot\BotCommands"},
+         @{Name="PowerBot\BotCommands"}
          @{Name="PowerBot\UserTracking"; Function = "Get-PowerBotRole"; Alias = "Get-Role", "Roles"}
          @{Name="Microsoft.PowerShell.Utility"; Cmdlet = "Format-Wide", "Format-List", "Format-Table", "Select-Object", "Sort-Object", "Get-Random", "Out-String"}
       )
