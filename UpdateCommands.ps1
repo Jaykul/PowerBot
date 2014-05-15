@@ -207,6 +207,8 @@ foreach($EventName in $irc.EventHooks.Keys) {
    }
 }
 
+$irc.EventHooks = @{}
+
 foreach($HookModule in $NewSettings.Hooks.Keys) {
    Write-Host "Importing" $HookModule "for" $ExecutionContext.SessionState.Module.Name
    try {
