@@ -71,7 +71,10 @@ foreach($Role in $NewSettings.RolePermissions.Keys) {
 
       foreach($module in $RoleModules.Keys) {
          foreach($command in (Get-Module $module.split("\")[-1]).ExportedCommands.Values | 
-            Where { $(foreach($name in $RoleModules.$module) { $_.Name -like $name }) -Contains $True } )
+            Where { 
+               $_.CommandType -ne "Alias" -and 
+               $(foreach($name in $RoleModules.$module) { $_.Name -like $name }) -Contains $True 
+            } )
          {
             Set-Content "function:local:$($command.Name)" (New-ProxyFunction $command)
          }  
