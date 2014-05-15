@@ -8,141 +8,143 @@ Import-Module SQLitePSProvider -ErrorAction Stop
 $NickServ = "NickServ"
 $Services = "services."
 
+${ActiveUsers} = @{}
+${PendingUsers} = @()
 
-# NOTE: PowerBot will create a "data:" drive if the "SQLitePSProvider" module is present.
-if(!(Test-Path data:)) { return }
-
-# So all we have to worry about is whether the UserTracking table is present
-if(!(Test-Path data:\UserTracking)) {
-   New-Item data:\UserTracking -Value @{ Account="TEXT UNIQUE NOT NULL"; Nick="TEXT NOT NULL"; LastMask="TEXT NOT NULL"; AcceptableMask="Text"; Roles="TEXT"; }
+# NOTE: PowerBot will create a "data:" drive if the "SQLite" module is present.
+if(!(Test-Path data:)) { 
+   Write-Warning "No data drive, UserTracking and Roles disabled"
+   return
 }
 
+# So all we have to worry about is whether the Roles table is present
+if(!(Test-Path data:\Roles)) {
+   New-Item data:\Roles -Value @{ Account="TEXT UNIQUE NOT NULL"; Roles="TEXT"; }
+}
+
+################################################################################
+##  These five functions serve as Authentication for FreeNode
+##  They are based on the fact that the user must be registered
 function Sync-Join {
    param($Source, $EventArgs)
-   $Data = $EventArgs.Data
-
-   $irc.SendMessage("Message", $NickServ, "info ${Nick}" )   
-}
-
-$q = [char]9787
-$Script:ReceivingAbout = $Null
-function Update-NickservInfo {
-   if("$Message" -match "Information on") {
-      $global:InfoMessage = $Message
-   }
-
-   if($Nick -eq $NickServ -and $Hostname -eq $Services) {
-      if($Message -match "Information on.+\b(.+)\b.+\(account.+\b(.+)\b.*\):") {
-         # Write-Host "Getting information about $($Matches[2])" -Fore Cyan
-         $Script:ReceivingAbout = @{ Account = $Matches[2]; Nick = $Matches[1]; }
-      }
-      elseif($Script:ReceivingAbout) {
-         Write-Host "NickServ about $($Script:ReceivingAbout.Account): $Message"
-         if($Message -match "Last addr\s+:\s+(\S*)")
-         {
-            $Script:ReceivingAbout.LastMask = $Matches[1]
-         }
-         elseif($Message -match 'Last seen\s+:\s+(.*)')
-         {
-            if($Matches[1] -eq "now") {
-               Write-Host "NickServ says $($Script:ReceivingAbout.Account) is online now." -fore green
-               # $null = $Script:ReceivingAbout.RemoveKey('account')
-               $Result = Set-Item data:\UserTracking -Filter "Account = '$($Script:ReceivingAbout.Account)'" -Value $Script:ReceivingAbout -ErrorAction SilentlyContinue -ErrorVariable Failed -Passthru
-               Write-Host "Result: $Result ($([Bool]!$Failed))"
-               if(!$Result) {
-                  $Result = New-Item data:\UserTracking @ReceivingAbout -ErrorAction SilentlyContinue -ErrorVariable Failed
-                  Write-Host "Result: $Result ($([Bool]!$Failed))"
-               }
-            } else {
-               Write-Host "Imposter: $($Script:ReceivingAbout.Nick) is not $($Script:ReceivingAbout.Account)" -fore red
-            }
-         }
-         elseif($Message -match "\*\*\*.*\bEnd of Info\b.*\*\*\*")
-         {
-            Write-Host "No more information about $($Script:ReceivingAbout.Account)" -fore darkyellow
-            $Script:ReceivingAbout = $Null
-         }
-      }
+   Write-Host "Sync Join: " $Nick
+   if($irc.Nicknames -notcontains $Nick) {
+      $irc.rfcWhoIs($Nick)
    }
 }
 
-
-function Sync-Who {
+function Sync-Part {
    param($Source, $EventArgs)
-   # $From = "{0}!{1}@{2}" -f $EventArgs.Nick, $EventArgs.Ident, $EventArgs.Host
-
-   $irc.SendMessage("Message", $NickServ, "info $($EventArgs.Nick)" )
+   Write-Host $EventArgs.Who "just parted" $EventArgs.Channel "saying" $EventArgs.PartMessage -fore DarkCyan
+   if(${ActiveUsers}.ContainsKey($Nick)) {
+      $null = ${ActiveUsers}.Remove($Nick)
+   }
 }
 
+# function Sync-Who {
+#    param($Source, $EventArgs)
+#    Write-Host "Sync Who: " $EventArgs.Nick -fore DarkCyan
+#    $irc.rfcWhoIs($EventArgs.Nick)
+# }
 
-function Sync-Nick {
+function Sync-NickChange {
+   param($Source, $EventArgs)
+   # $irc.rfcWhoIs($Nick)
+   Write-Host $EventArgs.OldNickname "is now" $EventArgs.NewNickname -fore DarkCyan
+   if(${ActiveUsers}.ContainsKey($EventArgs.OldNickname)) {
+      ${ActiveUsers}.($EventArgs.NewNickname) = ${ActiveUsers}.($EventArgs.OldNickname)
+      $null = ${ActiveUsers}.Remove($EventArgs.OldNickname)
+   }
+}
+
+# function Sync-Names {
+#    param($Source, $EventArgs)
+#    Write-Host "Sync Names: " $($EventArgs.UserList -join ' ') -fore DarkCyan
+#    $Script:PendingUsers += @($EventArgs.UserList)
+
+#    $Count = [Math]::Min(10, $Script:PendingUsers.Length)
+#    foreach($i in 1..$Count) {
+#       $Next, $Script:PendingUsers = $Script:PendingUsers
+#       Write-Host "NAMES: WHOIS $Next + $($Script:PendingUsers.Length)"
+#       $irc.rfcWhoIs($Next)
+#    }
+# }
+
+function Sync-LoggedIn {
+   # .Synopsis
+   #    Track the nicknames of logged-in users
+   # .Description
+   #    For dancer (the IRCD for FreeNode) 
+   #    As part of the WHOIS response, we get a Reply with ID 330
+   #    Which maps the nick to the account name it's logged in as
    param($Source, $EventArgs)
 
-   Write-Host $("Rename from {0} to {1}" -f $EventArgs.OldNickname, $EventArgs.NewNickname)
-   $irc.SendMessage("Message", $NickServ, "info $($EventArgs.NewNickname)" )   
+   Write-Host ("'" + $EventArgs.Nick + "' is logged in as '" + $EventArgs.Account + "'") -fore DarkCyan
+   ${ActiveUsers}.($EventArgs.Nick) = $EventArgs.Account
+
+   Write-Host (${ActiveUsers} | Format-Table | Out-String)
 }
 
-function Get-PowerBotUser {
+################################################################################
+##  These functions map accounts to one or more roles 
+##  And allow management of role-based access
+function Get-Role {
+   #.Synopsis
+   #  Get the role(s) for a user account
+   #.Description
+   #  Get the role(s) for the user. If the user doesn't have specified roles,
+   #  returns "User" for authenticated users, and "Guest" otherwise
+   [CmdletBinding(DefaultParameterSetName="Nickname")]
    param(
-      [Parameter(Position=0)]
-      [Alias("From")]
-      $HostMask
-   )
-   if($HostMask){ $Nick, $Mask = $HostMask.Split('!', 2) }
-   elseif($From) { $Nick, $Mask = $From.Split('!', 2) }
-
-   Get-Item -Path data:\UserTracking -filter "Nick = '${Nick}' AND LastMask = '${Mask}'" | Select Account, Nick, LastMask, AcceptableMask, Roles
-}
-
-function Get-PowerBotRole {
-   [CmdletBinding(DefaultParameterSetName="HostMask")]
-   param(
-      [Parameter(Position=0,ParameterSetName="Account",Mandatory=$True)]
+      # The (Nickserv) account to fetch roles for
+      [Parameter(Position=0, Mandatory=$True, ParameterSetName="Account")]
       $Account,
-
-      [Parameter(ParameterSetName="HostMask")]
-      [Alias("From")]
-      $HostMask
+      # The current nickname
+      [Parameter(Position=0, ParameterSetName="Nickname")]
+      $Nick
    )
+
+   if($Nick) {
+
+      Write-Host ("'" + (${ActiveUsers}.Keys -join "', '") + "' contains '" + $Nick + "' " + ${ActiveUsers}.ContainsKey($Nick))
+      if(${ActiveUsers}.ContainsKey($Nick)) {
+         $Account = ${ActiveUsers}.$Nick
+         Write-Host ("{0} = {1}" -f $Nick, $Account)
+      } else {
+         $irc.rfcWhoIs($Nick)
+      }
+   }
    if($Account) {
-      if($Roles = (Get-Item -Path data:\UserTracking -filter "Account = '${Account}'").Roles -split "\s+") { @($Roles) }
-      else { @("User") }
-      return
-   }
-   else{
-      if($HostMask){ $Nick, $Mask = $HostMask.Split('!', 2) }
-      elseif($From) { $Nick, $Mask = $From.Split('!', 2) }
-      else { return @("User") }
-
-      if($Roles = (Get-Item -Path data:\UserTracking -filter "Nick = '${Nick}' AND LastMask = '${Mask}'").Roles -split "\s+") {
-         @($Roles)
-      } else { @("User") }
-   }
+      if($Roles = (Get-Item -Path data:\Roles -filter "Account = '${Account}'").Roles -split "\s+") { 
+         @($Roles) 
+      } else {
+         @("User")
+      }
+   } else { @("Guest") }
 }
 
-function Set-PowerBotRole {
-   [CmdletBinding(DefaultParameterSetName="HostMask")]
+function Set-Role {
+   [CmdletBinding(DefaultParameterSetName="Nickname")]
    param(
-      [Parameter(Position=0, ParameterSetName="Account", Mandatory=$True)]
+      # The (Nickserv) account to fetch roles for
+      [Parameter(Position=0, Mandatory=$True, ParameterSetName="Account")]
       $Account,
 
-      [Parameter(ParameterSetName="HostMask", Mandatory=$True)]
-      [Alias("From")]
-      $HostMask,
-
+      # The role(s) to assign (
       [Parameter(Position=1, Mandatory=$true)]
       [ValidateScript({if($PowerBotUserRoles -contains $_){ $True } else { throw "$_ is not a valid Role. Please use one of: $PowerBotUserRoles"}})]
       [String[]]$Role
    )
+   if($Role -notcontains "User") {
+      Write-Warning "The 'User' role was not included -- this user will not have access to default commands"
+   }
 
-   if($Account) {
-      (Set-Item data:\UserTracking -Filter "account = '$Account'" -Value @{Roles = $Role -join ' '} -Passthru).Roles -split "\s+"
-   } elseif($HostMask){
-      $Nick, $Mask = $HostMask.Split('!', 2)
-      (Set-Item data:\UserTracking -Filter "Nick = '${Nick}' AND LastMask = '${Mask}'" -Value @{Roles = $Role -join ' '} -Passthru).Roles -split "\s+"
+   $Result = Set-Item data:\Roles -Filter "account = '$Account'" -Value @{Roles = $Role -join ' '} -Passthru -ErrorAction SilentlyContinue
+   if(!$Result) {
+      $Result = New-Item data:\Roles -Account $Account -Roles $($Role -join ' ') -ErrorAction SilentlyContinue
+   }
+
+   if($Result) {
+      $Result.Roles -split "\s+"
    }
 }
-
-
-Set-Alias Get-Role Get-PowerBotRole
-Set-Alias Roles Get-PowerBotRole

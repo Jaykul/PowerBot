@@ -19,13 +19,21 @@ if(!$global:PowerBotScriptRoot) {
   $global:PowerBotScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
 }
 
+$DataDir = Join-Path $Env:ProgramData "PowerBot"
+if(!(Test-Path $DataDir)) { 
+   Write-Warning "No PowerBot Settings Directory. Creating '$DataDir'"
+   mkdir $DataDir
+}
+
 ## If Jim Christopher's SQLite module is available, we'll use it
 Import-Module SQLitePSProvider -ErrorAction SilentlyContinue
-if((Get-Command Mount-SQLite) -and -not (Test-Path data:)) {
-   # TODO: We should store the BotDataFile in the ProgramData folder
-   $BotDataFile = (Join-Path $PowerBotScriptRoot "botdata.sqlite")
-   Mount-SQLite -Name data -DataSource $BotDataFile
+if(!(Test-Path data:) -and (Microsoft.PowerShell.Core\Get-Command Mount-SQLite)) {
+   $BotDataFile = Join-Path $DataDir "botdata.sqlite"
+   Mount-SQLite -Name data -DataSource ${BotDataFile}
+} elseif(!(Test-Path data:)) {
+   Write-Warning "No data drive, UserTracking and Roles disabled"
 }
+
 
 function Get-PowerBotIrcClient { $script:irc }
 
@@ -194,13 +202,13 @@ function Start-PowerBot {
 function Resume-PowerBot {
    #.Synopsis
    #  Reimport all command modules and restart the main listening loop
-   [CmdletBinding()]param()
+   [CmdletBinding()]param([switch]$Force)
 
    if(!(Test-Path -Path Variable:Script:Irc)) {
       throw "You must call Start-PowerBot before you call Resume-Powerbot"
    }
 
-   Update-CommandModule
+   . $PowerBotScriptRoot\UpdateCommands.ps1 -Force:$Force
 
    # Initialize the command array (only commands in this list will be heeded)
    while($Host.UI.RawUI.ReadKey().Character -ne "Q") {
@@ -210,9 +218,6 @@ function Resume-PowerBot {
    }
 }
 
-function Update-CommandModule {
-   . $PowerBotScriptRoot\UpdateCommands.ps1 -Force
-}
 
 function Stop-PowerBot {
    #.Synopsis
@@ -299,24 +304,55 @@ function Process-Message {
    $global:Message  = $Data.Message
    $global:Nick     = $Data.Nick
 
+   # The default role for users with no roles set is Guest
+   # EVERYONE gets the Guest role, no matter what
+   $global:Roles    = @("Guest")
+   if(Microsoft.PowerShell.Core\Get-Command Get-Role) {
+      $global:Roles = @(Get-Role -Nick $global:Nick) | Select -Unique
+   } else {
+      # If there's no Access Control module loaded, then we also allow everyone the "User" role 
+      # Because that's where most of the commands are ...
+      $global:Roles = @("User")
+   }
 
-   # Figure out which modules the user is allowed to use.
-   # Everyone is allowed the "User" role
-   $AllowedModule = @("PowerBotUserCommands") + @(
-      # If there's a PowerBotUserRoles module, they may get other roles ...
-      if(Get-Command Get-PowerBotRole) {
-         foreach($Role in Get-PowerBotRole -From $From) {
+   $ReAuthorize = $False
+   do {
+      # ReAuthorize is true if we think we might have gotten the default response back
+      $ReAuthorize = !$ReAuthorize -and ($global:Roles.Length -eq 1 -and $global:Roles[0] -eq "Guest") -and (Microsoft.PowerShell.Core\Get-Command Get-Role)
+      Write-Host "Lookup Roles: ${global:Roles} (ReAuthorize: ${ReAuthorize})" -Fore Magenta
+
+      # Figure out which modules the user is allowed to use.
+      # Everyone gets access to the "Guest" commands
+      $AllowedModule = @(
+         "PowerBotGuestCommands"
+
+         # They may get other roles ...
+         foreach($Role in $global:Roles) {
             "PowerBot${Role}Commands"
          }
-      }
-      if($From -eq $irc.BotOwner) {
-         "PowerBotOwnerCommands"
-      }
-   ) | Select-Object -Unique
+         # Hack to allow recognizing the owner purely by hostmask
+         if($From -eq $irc.BotOwner) {
+            "PowerBotOwnerCommands"
+         }
+      ) | Select-Object -Unique
 
-   Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule ''$($AllowedModule -join '','')'' -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
+      Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule ''$($AllowedModule -join '','')'' -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
+      Write-Host "AllowedModules: ${AllowedModule}"
 
-   $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
+      $AllowedCommands = (Get-Module $AllowedModule).ExportedCommands.Values | % { $_.ModuleName + '\' + $_.Name }
+      $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
+
+      # If the script was invalid and they were authenticated as "Guest" let's check their authentication again
+      # This second check allows the UserTracking module to test authentication asynchronously if necessary
+      # If we still get back Guest, then they're probably really a guest
+      if(!$Script -and $ReAuthorize) {
+         $global:Roles = @(Get-Role -Nick $global:Nick) | Select -Unique
+         $ReAuthorize = ($global:Roles.Length -gt 1 -or $global:Roles[0] -ne "Guest")
+      }
+      Write-Host "Protection Roles: ${global:Roles} (ReAuthorize: ${ReAuthorize}) ${Script}" -Fore Green
+   } while($ReAuthorize)
+
+
    if(!$Script) {
       if($Warnings) {
          Send-Message -Type Message -To "#PowerBot" -Message "WARNING [${Channel}:${Nick}]: $($warnings -join ' | ')"

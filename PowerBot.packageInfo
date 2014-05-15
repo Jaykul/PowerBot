@@ -3,7 +3,7 @@
   <id>
   </id>
   <title type="text">Module Updates</title>
-  <updated>2014-04-20T06:14:52.3417158Z</updated>
+  <updated>2014-05-15T06:39:42.5210095Z</updated>
   <entry>
     <id>
     </id>
@@ -14,8 +14,8 @@
     </author>
     <content type="application/zip" src="" />
     <m:properties>
-      <d:Version>3.4</d:Version>
-      <d:Dependencies>ResolveAlias::|Strings::|Bing::|FAQ::|Math::|WebQueries:</d:Dependencies>
+      <d:Version>3.6</d:Version>
+      <d:Dependencies>ResolveAlias:</d:Dependencies>
       <!-- These are RECOMMENDED: -->
       <d:Copyright>(c) 2014, Joel Bennett</d:Copyright>
       <d:Tags>PowerShell Module</d:Tags>

@@ -12,7 +12,7 @@ To install, use the [PoshCode](/PoshCode/PoshCode) module:
 
 I've included a few commands here in the BotCommands module, but in my bot (which I host in Azure) I also use a bunch of other modules. Here are some suggested additions:
 
-    Install-Module 'Strings', 'Bing', 'Math', 'WebQueries', 'FAQ', 'Credit'
+    'SQLitePSProvider', 'Strings', 'Bing', 'Math', 'WebQueries', 'FAQ', 'Credit' | % { Install-Module $_ }
 
 You can add this to the RolePermissions.Users array:
 
@@ -21,7 +21,7 @@ You can add this to the RolePermissions.Users array:
     @{Name="WebQueries"}
     @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"}
     @{Name="FAQ"}
-    @{Name="Credit"}
+    @{Name="SQLiteCredit"}
 
 I should note that FAQ and Credit, as well as the new "UserTracking" module require a "data:" drive with filter support 
 such as the one provided by Jim Christopher's SqlLite module, which I packaged on Chocolatey for the PoshCode module:
