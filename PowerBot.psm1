@@ -315,43 +315,24 @@ function Process-Message {
       $global:Roles = @("User")
    }
 
-   $ReAuthorize = $False
-   do {
-      # ReAuthorize is true if we think we might have gotten the default response back
-      $ReAuthorize = !$ReAuthorize -and ($global:Roles.Length -eq 1 -and $global:Roles[0] -eq "Guest") -and (Microsoft.PowerShell.Core\Get-Command Get-Role)
-      Write-Host "Lookup Roles: ${global:Roles} (ReAuthorize: ${ReAuthorize})" -Fore Magenta
+   # Figure out which modules the user is allowed to use.
+   # Everyone gets access to the "Guest" commands
+   $AllowedModule = @(
+      "PowerBotGuestCommands"
 
-      # Figure out which modules the user is allowed to use.
-      # Everyone gets access to the "Guest" commands
-      $AllowedModule = @(
-         "PowerBotGuestCommands"
-
-         # They may get other roles ...
-         foreach($Role in $global:Roles) {
-            "PowerBot${Role}Commands"
-         }
-         # Hack to allow recognizing the owner purely by hostmask
-         if($From -eq $irc.BotOwner) {
-            "PowerBotOwnerCommands"
-         }
-      ) | Select-Object -Unique
-
-      Write-Verbose "Protect-Script -Script $ScriptString -AllowedModule ''$($AllowedModule -join '','')'' -AllowedVariable $($InternalVariables -join ', ') -WarningVariable warnings"
-      Write-Host "AllowedModules: ${AllowedModule}"
-
-      $AllowedCommands = (Get-Module $AllowedModule).ExportedCommands.Values | % { $_.ModuleName + '\' + $_.Name }
-      $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
-
-      # If the script was invalid and they were authenticated as "Guest" let's check their authentication again
-      # This second check allows the UserTracking module to test authentication asynchronously if necessary
-      # If we still get back Guest, then they're probably really a guest
-      if(!$Script -and $ReAuthorize) {
-         $global:Roles = @(Get-Role -Nick $global:Nick) | Select -Unique
-         $ReAuthorize = ($global:Roles.Length -gt 1 -or $global:Roles[0] -ne "Guest")
+      # They may get other roles ...
+      foreach($Role in $global:Roles) {
+         "PowerBot${Role}Commands"
       }
-      Write-Host "Protection Roles: ${global:Roles} (ReAuthorize: ${ReAuthorize}) ${Script}" -Fore Green
-   } while($ReAuthorize)
+      # Hack to allow recognizing the owner purely by hostmask
+      if($From -eq $irc.BotOwner) {
+         "PowerBotOwnerCommands"
+      }
+   ) | Select-Object -Unique
 
+
+   $AllowedCommands = (Get-Module $AllowedModule).ExportedCommands.Values | % { $_.ModuleName + '\' + $_.Name }
+   $Script = Protect-Script -Script $ScriptString -AllowedModule $AllowedModule -AllowedVariable $InternalVariables -WarningVariable warnings
 
    if(!$Script) {
       if($Warnings) {

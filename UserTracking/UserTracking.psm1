@@ -105,12 +105,10 @@ function Get-Role {
    )
 
    if($Nick) {
-
-      Write-Host ("'" + (${ActiveUsers}.Keys -join "', '") + "' contains '" + $Nick + "' " + ${ActiveUsers}.ContainsKey($Nick))
       if(${ActiveUsers}.ContainsKey($Nick)) {
          $Account = ${ActiveUsers}.$Nick
-         Write-Host ("{0} = {1}" -f $Nick, $Account)
       } else {
+         Write-Host "Unknown User"
          $irc.rfcWhoIs($Nick)
       }
    }

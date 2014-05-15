@@ -14,16 +14,19 @@ I've included a few commands here in the BotCommands module, but in my bot (whic
 
     'SQLitePSProvider', 'Strings', 'Bing', 'Math', 'WebQueries', 'FAQ', 'Credit' | % { Install-Module $_ }
 
-You can add this to the RolePermissions.Users array:
+You can add this to the RolePermissions.Users hashtable:
 
-    @{Name="Bing"}
-    @{Name="Math"}
-    @{Name="WebQueries"}
-    @{Name="Strings"; Function = "Join-String", "Split-String", "Replace-String", "Format-Csv"}
-    @{Name="FAQ"}
-    @{Name="SQLiteCredit"}
 
-I should note that FAQ and Credit, as well as the new "UserTracking" module require a "data:" drive with filter support 
+"Bing"="*"
+"Math"="*"
+"WebQueries"="*"
+"Strings"= "Join-String", "Split-String", "Replace-String", "Format-Csv"
+
+"FAQ"="*"
+"CreditTracking"="*"
+
+
+I should note that FAQ and CreditTracking, as well as the new "UserTracking" module require a "data:" drive with filter support 
 such as the one provided by Jim Christopher's SqlLite module, which I packaged on Chocolatey for the PoshCode module:
 
    Install-Module SQLitePSProvider
