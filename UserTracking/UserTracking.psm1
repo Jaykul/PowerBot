@@ -101,7 +101,7 @@ function Get-Role {
       $Account,
       # The current nickname
       [Parameter(Position=0, ParameterSetName="Nickname")]
-      $Nick
+      $Nick = $Nick
    )
 
    if($Nick) {
@@ -113,12 +113,15 @@ function Get-Role {
       }
    }
    if($Account) {
-      if($Roles = (Get-Item -Path data:\Roles -filter "Account = '${Account}'").Roles -split "\s+") { 
-         @($Roles) 
+      $Roles = Get-Item -Path data:\Roles -filter "Account = '${Account}'" | Select-Object Account, @{n="Roles"; e={@($_.Roles -split "\s+")}} | % { $_.PSTypeNames.Insert(0, "PowerBot.Roles"); $_ }
+      if($Roles.Roles.Count) { 
+         $Roles
       } else {
-         @("User")
+         New-Object PSObject -Property @{Account = $Account; Roles = @("User"); PSTypeName = "PowerBot.Roles"}
       }
-   } else { @("Guest") }
+   } else { 
+      New-Object PSObject -Property @{Account = "Unidentified '$Nick'"; Roles = @("Guest"); PSTypeName = "PowerBot.Roles"}
+   }
 }
 
 function Set-Role {
@@ -143,6 +146,8 @@ function Set-Role {
    }
 
    if($Result) {
-      $Result.Roles -split "\s+"
+      $Result | Select-Object Account, @{n="Roles"; e={@($_.Roles -split "\s+")}} | % { $_.PSTypeNames.Insert(0, "PowerBot.Roles"); $_ }
    }
 }
+
+Update-TypeData -DefaultDisplayProperty Roles -TypeName "PowerBot.Roles"

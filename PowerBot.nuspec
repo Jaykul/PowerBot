@@ -9,7 +9,7 @@
     <copyright>(c) 2014, Joel Bennett</copyright>
     <tags>PowerShell Module</tags>
     <dependencies>
-      <dependency id="ResolveAlias" />
+      <dependency id="ResolveAlias" version="2.4" />
     </dependencies>
   </metadata>
 </package>

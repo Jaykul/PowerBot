@@ -308,7 +308,7 @@ function Process-Message {
    # EVERYONE gets the Guest role, no matter what
    $global:Roles    = @("Guest")
    if(Microsoft.PowerShell.Core\Get-Command Get-Role) {
-      $global:Roles = @(Get-Role -Nick $global:Nick) | Select -Unique
+      $global:Roles = @(Get-Role -Nick $global:Nick | Select -Expand Roles -Unique)
    } else {
       # If there's no Access Control module loaded, then we also allow everyone the "User" role 
       # Because that's where most of the commands are ...
