@@ -143,9 +143,8 @@ foreach($Role in $NewSettings.RolePermissions.Keys) {
              . $PowerBotScriptRoot\UpdateCommands.ps1 -Force:$Force
            }
          }
-      } elseif($Role -ne "User") {
-         # For everyone but the "User" -- export Get-Command (everything but guest will have a prefix)
-         # User will export Get-UserCommand and will alias Get-Command to it
+      } 
+      if($Role -ne "User") {
 
          function Get-Command {
             #.SYNOPSIS
@@ -159,7 +158,7 @@ foreach($Role in $NewSettings.RolePermissions.Keys) {
                $ExecutionContext.SessionState.Module.ExportedCommands.Values | Where { $_.CommandType -ne "Alias"  -and $_.Name -like $Name } | Sort Name
             }
          }
-      } elseif($Role -eq "User") {
+      } else {
 
          function Get-Alias {
             #.SYNOPSIS

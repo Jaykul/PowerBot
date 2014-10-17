@@ -27,7 +27,7 @@ if(!(Test-Path data:\Roles)) {
 ##  They are based on the fact that the user must be registered
 function Sync-Join {
    param($Source, $EventArgs)
-   Write-Host "Sync Join: " $Nick
+   # Write-Host "Sync Join: " $Nick
    if($irc.Nicknames -notcontains $Nick) {
       $irc.rfcWhoIs($Nick)
    }
@@ -50,7 +50,8 @@ function Sync-Part {
 function Sync-NickChange {
    param($Source, $EventArgs)
    # $irc.rfcWhoIs($Nick)
-   Write-Host $EventArgs.OldNickname "is now" $EventArgs.NewNickname -fore DarkCyan
+   # Write-Host $EventArgs.OldNickname "is now" $EventArgs.NewNickname -fore DarkCyan
+
    if(${ActiveUsers}.ContainsKey($EventArgs.OldNickname)) {
       ${ActiveUsers}.($EventArgs.NewNickname) = ${ActiveUsers}.($EventArgs.OldNickname)
       $null = ${ActiveUsers}.Remove($EventArgs.OldNickname)
@@ -79,10 +80,10 @@ function Sync-LoggedIn {
    #    Which maps the nick to the account name it's logged in as
    param($Source, $EventArgs)
 
-   Write-Host ("'" + $EventArgs.Nick + "' is logged in as '" + $EventArgs.Account + "'") -fore DarkCyan
+   # Write-Host ("'" + $EventArgs.Nick + "' is logged in as '" + $EventArgs.Account + "'") -fore DarkCyan
    ${ActiveUsers}.($EventArgs.Nick) = $EventArgs.Account
 
-   Write-Host (${ActiveUsers} | Format-Table | Out-String)
+   # Write-Host (${ActiveUsers} | Format-Table | Out-String)
 }
 
 ################################################################################
@@ -108,7 +109,7 @@ function Get-Role {
       if(${ActiveUsers}.ContainsKey($Nick)) {
          $Account = ${ActiveUsers}.$Nick
       } else {
-         Write-Host "Unknown User"
+         Write-Host "Unidentified User: $Nick"
          $irc.rfcWhoIs($Nick)
       }
    }

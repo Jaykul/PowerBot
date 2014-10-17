@@ -211,9 +211,14 @@ function Resume-PowerBot {
    . $PowerBotScriptRoot\UpdateCommands.ps1 -Force:$Force
 
    # Initialize the command array (only commands in this list will be heeded)
-   while($Host.UI.RawUI.ReadKey().Character -ne "Q") {
-      while(!$Host.UI.RawUI.KeyAvailable) { 
-         $irc.ListenOnce($false) 
+   $Character = $Null
+   while($Character -ne "Q") {
+      while(!$Host.UI.RawUI.KeyAvailable) {  $irc.ListenOnce($false)  }
+      $Character = $Host.UI.RawUI.ReadKey().Character
+      if($Character -eq "R") {
+        &(Get-Module PowerBot) { 
+            . $PowerBotScriptRoot\UpdateCommands.ps1 -Force:$Force
+        }
       }
    }
 }
